@@ -214,7 +214,7 @@ Revisão guiada por OWASP Top 10 e OWASP API Security Top 10:
 | Sequences `INCREMENT BY 50` em vez de IDENTITY | Permite ao Hibernate fazer *JDBC batch*: um evento de 500 assentos é criado em ~0,4 s. |
 | Testcontainers com Postgres real (não H2) | Locks, índices parciais, `SKIP LOCKED` e `ON CONFLICT` são comportamentos do Postgres. |
 | `Clock` injetável (`MutableClock` nos testes) | Testes de expiração "pulam" 10 minutos sem `sleep`. |
-| ProblemDetail (RFC 9457) | Erros padronizados, sem stack trace nem SQL na resposta; 402 recusa, 409 conflito, 422 regra de negócio, 503 + `Retry-After` quando o resultado do pagamento é incerto. |
+| ProblemDetail (RFC 9457) | Erros padronizados, sem stack trace nem SQL na resposta; 401 token de admin, 402 recusa, 409 conflito, 413 corpo grande, 422 regra de negócio, 503 + `Retry-After` quando o resultado do pagamento é incerto ou uma dependência caiu. Documentados no OpenAPI. |
 
 ## API
 
