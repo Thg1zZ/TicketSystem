@@ -8,10 +8,13 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 @Service
 public class EventService {
+
+    static final int MAX_SEATS_PER_EVENT = 10_000;
 
     private final EventRepository eventRepository;
     private final SeatRepository seatRepository;
@@ -26,6 +29,7 @@ public class EventService {
     @Transactional
     public EventResponse create(CreateEventRequest request) {
         ensureUniqueSectorNames(request.sectors());
+        ensureCapacityWithinLimit(request.sectors());
 
         Event event = new Event(request.name(), request.venue(), request.startsAt());
         request.sectors().forEach(sector ->
@@ -53,11 +57,21 @@ public class EventService {
     private static void ensureUniqueSectorNames(List<CreateEventRequest.SectorRequest> sectors) {
         Set<String> names = new HashSet<>();
         sectors.stream()
-                .map(sector -> sector.name().trim().toLowerCase())
+                .map(sector -> sector.name().trim().toLowerCase(Locale.ROOT))
                 .filter(name -> !names.add(name))
                 .findFirst()
                 .ifPresent(duplicated -> {
                     throw new BusinessRuleException("Sector names must be unique within an event: '%s'".formatted(duplicated));
                 });
+    }
+
+    /**
+     * Bounds the work of a single request (inserts now, seat map size later).
+     */
+    private static void ensureCapacityWithinLimit(List<CreateEventRequest.SectorRequest> sectors) {
+        int seats = sectors.stream().mapToInt(sector -> sector.rows() * sector.seatsPerRow()).sum();
+        if (seats > MAX_SEATS_PER_EVENT) {
+            throw new BusinessRuleException("An event can have at most %d seats, got %d".formatted(MAX_SEATS_PER_EVENT, seats));
+        }
     }
 }
