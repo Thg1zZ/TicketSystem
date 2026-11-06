@@ -4,8 +4,6 @@ import dev.thiagogomes.ticketsystem.event.Seat;
 import dev.thiagogomes.ticketsystem.event.SeatRepository;
 import dev.thiagogomes.ticketsystem.reservation.SeatHold;
 import dev.thiagogomes.ticketsystem.reservation.SeatsUnavailableException;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.List;
@@ -14,8 +12,6 @@ import java.util.List;
  * A single "UPDATE ... WHERE available" lets Postgres do check-and-set atomically; fewer rows updated
  * than requested means someone else got at least one seat (the transaction rollback undoes the rest).
  */
-@Component
-@ConditionalOnProperty(name = SeatReservationStrategy.PROPERTY, havingValue = "conditional")
 class ConditionalUpdateSeatReservation implements SeatReservationStrategy {
 
     private final SeatRepository seatRepository;

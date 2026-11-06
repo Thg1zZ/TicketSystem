@@ -4,11 +4,9 @@ import dev.thiagogomes.ticketsystem.event.Seat;
 import dev.thiagogomes.ticketsystem.event.SeatRepository;
 import dev.thiagogomes.ticketsystem.reservation.SeatHold;
 import dev.thiagogomes.ticketsystem.reservation.SeatsUnavailableException;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
-import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
@@ -21,8 +19,6 @@ import java.util.UUID;
  * so only winners reach the database, which then confirms with a conditional UPDATE
  * (protects against Redis data loss or a seat sold after its Redis key expired).
  */
-@Component
-@ConditionalOnProperty(name = SeatReservationStrategy.PROPERTY, havingValue = "redis")
 class RedisSeatReservation implements SeatReservationStrategy {
 
     @SuppressWarnings("rawtypes")

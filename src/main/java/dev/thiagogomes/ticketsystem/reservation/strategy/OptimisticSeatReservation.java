@@ -4,9 +4,7 @@ import dev.thiagogomes.ticketsystem.event.Seat;
 import dev.thiagogomes.ticketsystem.event.SeatRepository;
 import dev.thiagogomes.ticketsystem.reservation.SeatHold;
 import dev.thiagogomes.ticketsystem.reservation.SeatsUnavailableException;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
-import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.List;
@@ -15,8 +13,6 @@ import java.util.List;
  * Read without locking, then write with "WHERE version = ?" (@Version). Nobody waits; whoever commits
  * second gets 0 rows updated. No retry: a conflict here means another buyer already owns the seat.
  */
-@Component
-@ConditionalOnProperty(name = SeatReservationStrategy.PROPERTY, havingValue = "optimistic")
 class OptimisticSeatReservation implements SeatReservationStrategy {
 
     private final SeatRepository seatRepository;
