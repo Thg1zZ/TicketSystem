@@ -123,6 +123,23 @@ class HoldControllerTest {
     }
 
     @Test
+    void rejectsMalformedUserId() throws Exception {
+        hold("<script>alert(1)</script>", seat(0))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.userId").exists());
+        hold("a".repeat(65), seat(0)).andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void salesCloseWhenTheEventStarts() throws Exception {
+        clock.advance(Duration.ofDays(31)); // fixture events start 30 days from now
+
+        hold("alice", seat(0))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.detail").value("Sales are closed: the event has already started"));
+    }
+
+    @Test
     void releasingHoldFreesSeats() throws Exception {
         String holdId = holdId(hold("alice", seat(0)));
 

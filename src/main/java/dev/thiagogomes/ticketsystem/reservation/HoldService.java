@@ -1,5 +1,6 @@
 package dev.thiagogomes.ticketsystem.reservation;
 
+import dev.thiagogomes.ticketsystem.event.Event;
 import dev.thiagogomes.ticketsystem.event.EventRepository;
 import dev.thiagogomes.ticketsystem.event.Seat;
 import dev.thiagogomes.ticketsystem.event.SeatRepository;
@@ -62,15 +63,16 @@ public class HoldService {
         if (new HashSet<>(seatIds).size() != seatIds.size()) {
             throw new BusinessRuleException("Seat ids must not repeat");
         }
-        Instant now = clock.instant();
-        reservationStrategy.rejectIfKnownTaken(eventId, seatIds, now);
-        return transaction.execute(status -> createInTransaction(eventId, userId, seatIds, now));
+        reservationStrategy.rejectIfKnownTaken(eventId, seatIds, clock.instant());
+        return transaction.execute(status -> createInTransaction(eventId, userId, seatIds));
     }
 
-    private HoldResponse createInTransaction(Long eventId, String userId, List<Long> seatIds, Instant now) {
-        if (!eventRepository.existsById(eventId)) {
-            throw new NotFoundException("Event %d not found".formatted(eventId));
-        }
+    private HoldResponse createInTransaction(Long eventId, String userId, List<Long> seatIds) {
+        // Read after the connection was obtained: time spent waiting for the pool must not shorten the hold
+        Instant now = clock.instant();
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(() -> new NotFoundException("Event %d not found".formatted(eventId)));
+        ensureOnSale(event, now);
         expirePreviousHoldOrReject(eventId, userId, now);
 
         SeatHold hold = persistNewHold(new SeatHold(eventId, userId, now.plus(holdTtl)));
@@ -94,7 +96,9 @@ public class HoldService {
     @Transactional
     public SeatHold convertForCheckout(UUID holdId, String userId) {
         SeatHold hold = findOwned(holdId, userId);
-        boolean converted = hold.isActiveAt(clock.instant())
+        Instant now = clock.instant();
+        ensureOnSale(eventRepository.findById(hold.getEventId()).orElseThrow(), now);
+        boolean converted = hold.isActiveAt(now)
                 && holdRepository.transition(holdId, HoldStatus.ACTIVE, HoldStatus.CONVERTED) == 1;
         if (!converted) {
             throw new ConflictException("Hold is not active: it expired, was released or was already checked out");
@@ -132,6 +136,12 @@ public class HoldService {
             }
             closeHold(previous, HoldStatus.ACTIVE, HoldStatus.EXPIRED);
         });
+    }
+
+    private static void ensureOnSale(Event event, Instant now) {
+        if (!event.isOnSaleAt(now)) {
+            throw new BusinessRuleException("Sales are closed: the event has already started");
+        }
     }
 
     private SeatHold findOwned(UUID holdId, String userId) {

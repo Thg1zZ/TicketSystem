@@ -54,6 +54,13 @@ public class Event {
         return sector;
     }
 
+    /**
+     * Sales (holds and checkout) close when the event starts.
+     */
+    public boolean isOnSaleAt(Instant now) {
+        return now.isBefore(startsAt);
+    }
+
     public Long getId() {
         return id;
     }

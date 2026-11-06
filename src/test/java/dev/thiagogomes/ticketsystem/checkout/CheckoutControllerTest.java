@@ -126,6 +126,14 @@ class CheckoutControllerTest {
     }
 
     @Test
+    void checkoutIsRefusedOnceTheEventStarts() throws Exception {
+        clock.advance(Duration.ofDays(31)); // fixture events start 30 days from now
+
+        checkout(hold.id(), "alice", "key-too-late-01").andExpect(status().isUnprocessableContent());
+        assertThat(orderRepository.findByUserIdAndIdempotencyKey("alice", "key-too-late-01")).isEmpty();
+    }
+
+    @Test
     void paidHoldCannotBeReleased() throws Exception {
         checkout(hold.id(), "alice", "key-release-001").andExpect(status().isCreated());
 
