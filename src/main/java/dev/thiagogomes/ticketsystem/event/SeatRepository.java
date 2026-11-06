@@ -32,6 +32,34 @@ public interface SeatRepository extends JpaRepository<Seat, Long> {
             """, nativeQuery = true)
     List<Seat> lockForUpdate(Long eventId, Collection<Long> seatIds);
 
+    /**
+     * Plain read, no lock. Sector is fetched so the response can be built from detached entities.
+     */
+    @Query("""
+            select s from Seat s join fetch s.sector sec
+            where s.id in :seatIds and sec.event.id = :eventId
+            order by s.id
+            """)
+    List<Seat> findForEvent(Long eventId, Collection<Long> seatIds);
+
+    /**
+     * Check-and-set in a single statement: concurrent UPDATEs on the same row wait for each other and the loser
+     * re-evaluates the WHERE against the winner's committed row, matching nothing. Callers compare the row count.
+     */
+    @Modifying(flushAutomatically = true)
+    @Query("""
+            update Seat s
+            set s.status = dev.thiagogomes.ticketsystem.event.SeatStatus.HELD,
+                s.holdId = :holdId, s.heldUntil = :heldUntil, s.version = s.version + 1
+            where s.id in :seatIds
+              and (s.status = dev.thiagogomes.ticketsystem.event.SeatStatus.AVAILABLE
+                   or (s.status = dev.thiagogomes.ticketsystem.event.SeatStatus.HELD and s.heldUntil <= :now))
+            """)
+    int claimIfAvailable(Collection<Long> seatIds, UUID holdId, Instant heldUntil, Instant now);
+
+    @Query("select s.id from Seat s where s.holdId = :holdId and s.status = dev.thiagogomes.ticketsystem.event.SeatStatus.HELD")
+    List<Long> findIdsHeldBy(UUID holdId);
+
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""
             update Seat s

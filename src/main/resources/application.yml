@@ -31,6 +31,8 @@ spring:
     password: ticket
 
 ticket:
+  reservation:
+    strategy: pessimistic # pessimistic | optimistic | redis | conditional
   hold:
     ttl: PT10M
     cleanup-interval: PT30S

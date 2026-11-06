@@ -51,6 +51,7 @@ services:
       SPRING_DATA_REDIS_PORT: 6379
       SPRING_RABBITMQ_HOST: rabbitmq
       SPRING_RABBITMQ_PORT: 5672
+      TICKET_RESERVATION_STRATEGY: ${STRATEGY:-pessimistic}
     depends_on:
       postgres:
         condition: service_healthy

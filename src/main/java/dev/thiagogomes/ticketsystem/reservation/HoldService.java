@@ -7,6 +7,8 @@ import dev.thiagogomes.ticketsystem.reservation.strategy.SeatReservationStrategy
 import dev.thiagogomes.ticketsystem.shared.error.BusinessRuleException;
 import dev.thiagogomes.ticketsystem.shared.error.ConflictException;
 import dev.thiagogomes.ticketsystem.shared.error.NotFoundException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -23,6 +25,7 @@ import java.util.UUID;
 @Service
 public class HoldService {
 
+    private static final Logger log = LoggerFactory.getLogger(HoldService.class);
     private static final String ACTIVE_HOLD_MESSAGE = "User already has an active hold for this event";
 
     private final SeatHoldRepository holdRepository;
@@ -44,6 +47,7 @@ public class HoldService {
         this.reservationStrategy = reservationStrategy;
         this.clock = clock;
         this.holdTtl = holdTtl;
+        log.info("Seat reservation strategy: {}", reservationStrategy.getClass().getSimpleName());
     }
 
     @Transactional
@@ -70,7 +74,7 @@ public class HoldService {
         if (hold.getStatus() == HoldStatus.CONVERTED) {
             throw new ConflictException("Hold was already converted into an order");
         }
-        closeHold(holdId, HoldStatus.RELEASED);
+        closeHold(hold, HoldStatus.RELEASED);
     }
 
     /**
@@ -89,13 +93,15 @@ public class HoldService {
             if (previous.isActiveAt(now)) {
                 throw new ConflictException(ACTIVE_HOLD_MESSAGE, Map.of("holdId", previous.getId()));
             }
-            closeHold(previous.getId(), HoldStatus.EXPIRED);
+            closeHold(previous, HoldStatus.EXPIRED);
         });
     }
 
-    private void closeHold(UUID holdId, HoldStatus finalStatus) {
-        if (holdRepository.transition(holdId, HoldStatus.ACTIVE, finalStatus) == 1) {
-            seatRepository.releaseHeldBy(holdId);
+    private void closeHold(SeatHold hold, HoldStatus finalStatus) {
+        if (holdRepository.transition(hold.getId(), HoldStatus.ACTIVE, finalStatus) == 1) {
+            List<Long> seatIds = seatRepository.findIdsHeldBy(hold.getId());
+            seatRepository.releaseHeldBy(hold.getId());
+            reservationStrategy.release(hold, seatIds);
         }
     }
 
