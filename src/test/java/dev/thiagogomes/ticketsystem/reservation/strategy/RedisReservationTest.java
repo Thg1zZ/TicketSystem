@@ -1,6 +1,8 @@
 package dev.thiagogomes.ticketsystem.reservation.strategy;
 
 import dev.thiagogomes.ticketsystem.IntegrationTest;
+import dev.thiagogomes.ticketsystem.checkout.CheckoutService;
+import dev.thiagogomes.ticketsystem.checkout.OrderService;
 import dev.thiagogomes.ticketsystem.event.EventFixtures;
 import dev.thiagogomes.ticketsystem.event.EventFixtures.CreatedEvent;
 import dev.thiagogomes.ticketsystem.reservation.HoldResponse;
@@ -9,6 +11,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.context.TestPropertySource;
+
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
@@ -19,6 +23,10 @@ class RedisReservationTest extends ReservationStrategyContract {
 
     @Autowired
     StringRedisTemplate redis;
+    @Autowired
+    CheckoutService checkoutService;
+    @Autowired
+    OrderService orderService;
 
     @Override
     Class<? extends SeatReservationStrategy> expectedStrategy() {
@@ -46,6 +54,18 @@ class RedisReservationTest extends ReservationStrategyContract {
 
         assertThat(redis.hasKey(key(event))).as("bob's Redis claim compensated after rollback").isFalse();
         assertThat(seatRepository.findById(event.seatIds().getFirst()).orElseThrow().getHoldId()).isEqualTo(aliceHold.id());
+    }
+
+    @Test
+    void seatsOfACancelledOrderAreFreedInRedisToo() {
+        CreatedEvent event = EventFixtures.createEvent(eventService, 1);
+        HoldResponse aliceHold = holdService.create(event.id(), "alice", event.seatIds());
+        UUID orderId = checkoutService.checkout(aliceHold.id(), "alice", "redis-cancel-" + UUID.randomUUID()).order().id();
+
+        orderService.cancel(orderId, "alice");
+
+        assertThat(redis.hasKey(key(event))).isFalse();
+        holdService.create(event.id(), "bob", event.seatIds());
     }
 
     private static String key(CreatedEvent event) {

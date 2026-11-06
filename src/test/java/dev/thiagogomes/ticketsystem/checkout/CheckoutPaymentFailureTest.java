@@ -95,6 +95,15 @@ class CheckoutPaymentFailureTest {
     }
 
     @Test
+    void declinedOrderCannotBeCancelled() throws Exception {
+        doReturn(PaymentResult.declined("Insufficient funds")).when(gateway).charge(anyString(), any());
+        checkout("key-declined-03").andExpect(status().isPaymentRequired());
+
+        mockMvc.perform(post("/orders/{id}/cancel", order("key-declined-03").getId()).header("X-User-Id", "alice"))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
     void replayOfDeclinedOrderDoesNotChargeAgain() throws Exception {
         doReturn(PaymentResult.declined("Insufficient funds")).when(gateway).charge(anyString(), any());
         checkout("key-declined-02").andExpect(status().isPaymentRequired());
