@@ -50,4 +50,10 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
             where o.status = dev.thiagogomes.ticketsystem.checkout.OrderStatus.PENDING_PAYMENT and o.updatedAt < :before
             """)
     List<UUID> findPendingIdsUpdatedBefore(Instant before);
+
+    @Query("""
+            select e.startsAt from CustomerOrder o, SeatHold h, Event e
+            where o.id = :orderId and h.id = o.holdId and e.id = h.eventId
+            """)
+    Optional<Instant> findEventStart(UUID orderId);
 }

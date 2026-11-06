@@ -6,7 +6,6 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -24,11 +23,9 @@ import static dev.thiagogomes.ticketsystem.shared.RequestHeaders.USER_ID;
 class CheckoutController {
 
     private final CheckoutService checkoutService;
-    private final OrderService orderService;
 
-    CheckoutController(CheckoutService checkoutService, OrderService orderService) {
+    CheckoutController(CheckoutService checkoutService) {
         this.checkoutService = checkoutService;
-        this.orderService = orderService;
     }
 
     @Operation(summary = "Pay for a hold. Repeating the call with the same Idempotency-Key never charges twice")
@@ -43,11 +40,5 @@ class CheckoutController {
         return ResponseEntity.created(location)
                 .header(IDEMPOTENT_REPLAYED, String.valueOf(result.replayed()))
                 .body(result.order());
-    }
-
-    @Operation(summary = "Get one of your orders")
-    @GetMapping("/orders/{orderId}")
-    OrderResponse get(@PathVariable UUID orderId, @RequestHeader(USER_ID) @NotBlank @Size(max = 64) String userId) {
-        return orderService.find(orderId, userId);
     }
 }
