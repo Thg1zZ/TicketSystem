@@ -18,10 +18,13 @@ import java.lang.annotation.Target;
         "ticket.payment.min-latency=0s",
         "ticket.payment.max-latency=0s",
         "ticket.payment.failure-rate=0",
+        "ticket.admin.token=" + IntegrationTest.ADMIN_TOKEN,
         "ticket.outbox.relay-interval=PT0.1S",
         "spring.rabbitmq.listener.simple.retry.initial-interval=50ms"
 })
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
 public @interface IntegrationTest {
+
+    String ADMIN_TOKEN = "test-admin-token";
 }

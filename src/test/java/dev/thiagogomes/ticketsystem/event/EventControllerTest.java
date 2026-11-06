@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.everyItem;
@@ -37,7 +38,7 @@ class EventControllerTest {
 
     @Test
     void createsEventAndReturnsLocation() throws Exception {
-        mockMvc.perform(post("/events").contentType(MediaType.APPLICATION_JSON).content(VALID_EVENT))
+        postEvent(VALID_EVENT)
                 .andExpect(status().isCreated())
                 .andExpect(header().string("Location", containsString("/events/")))
                 .andExpect(jsonPath("$.name").value("Show de Abertura"))
@@ -85,7 +86,7 @@ class EventControllerTest {
                   "sectors": [ { "name": "Pista", "price": 0, "rows": 30, "seatsPerRow": 5 } ] }
                 """;
 
-        mockMvc.perform(post("/events").contentType(MediaType.APPLICATION_JSON).content(invalid))
+        postEvent(invalid)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors.name").exists())
                 .andExpect(jsonPath("$.errors.startsAt").exists())
@@ -101,13 +102,57 @@ class EventControllerTest {
                                { "name": "pista", "price": 20, "rows": 1, "seatsPerRow": 1 } ] }
                 """;
 
-        mockMvc.perform(post("/events").contentType(MediaType.APPLICATION_JSON).content(duplicated))
+        postEvent(duplicated)
                 .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.title").value("Business rule violated"));
     }
 
+    @Test
+    void creatingEventsRequiresTheAdminToken() throws Exception {
+        mockMvc.perform(post("/events").contentType(MediaType.APPLICATION_JSON).content(VALID_EVENT))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/events").header("X-Admin-Token", "wrong-token")
+                        .contentType(MediaType.APPLICATION_JSON).content(VALID_EVENT))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.title").value("Unauthorized"));
+    }
+
+    @Test
+    void eventCapacityIsCapped() throws Exception {
+        String tooBig = """
+                { "name": "Huge", "venue": "Arena", "startsAt": "2030-01-01T00:00:00Z",
+                  "sectors": [ { "name": "A", "price": 10, "rows": 26, "seatsPerRow": 100 },
+                               { "name": "B", "price": 10, "rows": 26, "seatsPerRow": 100 },
+                               { "name": "C", "price": 10, "rows": 26, "seatsPerRow": 100 },
+                               { "name": "D", "price": 10, "rows": 26, "seatsPerRow": 100 } ] }
+                """;
+
+        postEvent(tooBig)
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.detail").value("An event can have at most 10000 seats, got 10400"));
+    }
+
+    @Test
+    void priceAboveTheCeilingIsRejected() throws Exception {
+        String expensive = """
+                { "name": "VIP", "venue": "Arena", "startsAt": "2030-01-01T00:00:00Z",
+                  "sectors": [ { "name": "A", "price": 1000000.00, "rows": 1, "seatsPerRow": 2 } ] }
+                """;
+
+        postEvent(expensive)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors['sectors[0].price']").exists());
+    }
+
+    private ResultActions postEvent(String json) throws Exception {
+        return mockMvc.perform(post("/events")
+                .header("X-Admin-Token", IntegrationTest.ADMIN_TOKEN)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json));
+    }
+
     private long createEvent() throws Exception {
-        String body = mockMvc.perform(post("/events").contentType(MediaType.APPLICATION_JSON).content(VALID_EVENT))
+        String body = postEvent(VALID_EVENT)
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
         return ((Number) JsonPath.read(body, "$.id")).longValue();

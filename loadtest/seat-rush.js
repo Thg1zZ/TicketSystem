@@ -5,6 +5,7 @@ import exec from 'k6/execution';
 import { Counter, Trend } from 'k6/metrics';
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8081';
+const ADMIN_TOKEN = __ENV.ADMIN_TOKEN || 'local-admin-token';
 const RESULT_NAME = __ENV.RESULT_NAME || 'local';
 const USERS = Number(__ENV.USERS || 5000);
 const VUS = Number(__ENV.VUS || 1000);
@@ -35,7 +36,7 @@ export function setup() {
         venue: 'Arena',
         startsAt: '2030-01-01T20:00:00Z',
         sectors: [{ name: 'Pista', price: 150.0, rows: ROWS, seatsPerRow: SEATS_PER_ROW }],
-    }), { headers: JSON_HEADERS });
+    }), { headers: { ...JSON_HEADERS, 'X-Admin-Token': ADMIN_TOKEN } });
     if (event.status !== 201) {
         exec.test.abort(`could not create event: ${event.status} ${event.body}`);
     }

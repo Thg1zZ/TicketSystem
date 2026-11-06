@@ -7,6 +7,11 @@ public final class RequestHeaders {
      */
     public static final String USER_ID = "X-User-Id";
 
+    /**
+     * Shared secret required by admin operations (see {@link AdminTokenGuard}).
+     */
+    public static final String ADMIN_TOKEN = "X-Admin-Token";
+
     public static final String IDEMPOTENCY_KEY = "Idempotency-Key";
 
     /**

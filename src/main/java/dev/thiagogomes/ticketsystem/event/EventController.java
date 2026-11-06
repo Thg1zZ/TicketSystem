@@ -1,5 +1,6 @@
 package dev.thiagogomes.ticketsystem.event;
 
+import dev.thiagogomes.ticketsystem.shared.AdminTokenGuard;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -8,9 +9,12 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriComponentsBuilder;
+
+import static dev.thiagogomes.ticketsystem.shared.RequestHeaders.ADMIN_TOKEN;
 
 @Tag(name = "Events")
 @RestController
@@ -18,14 +22,19 @@ import org.springframework.web.util.UriComponentsBuilder;
 class EventController {
 
     private final EventService eventService;
+    private final AdminTokenGuard adminTokenGuard;
 
-    EventController(EventService eventService) {
+    EventController(EventService eventService, AdminTokenGuard adminTokenGuard) {
         this.eventService = eventService;
+        this.adminTokenGuard = adminTokenGuard;
     }
 
-    @Operation(summary = "Create an event with sectors and a numbered seat layout")
+    @Operation(summary = "Create an event with sectors and a numbered seat layout (admin only, up to 10,000 seats)")
     @PostMapping
-    ResponseEntity<EventResponse> create(@Valid @RequestBody CreateEventRequest request, UriComponentsBuilder uriBuilder) {
+    ResponseEntity<EventResponse> create(@RequestHeader(value = ADMIN_TOKEN, required = false) String adminToken,
+                                         @Valid @RequestBody CreateEventRequest request,
+                                         UriComponentsBuilder uriBuilder) {
+        adminTokenGuard.check(adminToken);
         EventResponse created = eventService.create(request);
         var location = uriBuilder.path("/events/{id}").buildAndExpand(created.id()).toUri();
         return ResponseEntity.created(location).body(created);
