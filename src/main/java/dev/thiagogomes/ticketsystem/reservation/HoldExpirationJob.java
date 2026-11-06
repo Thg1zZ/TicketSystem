@@ -1,5 +1,6 @@
 package dev.thiagogomes.ticketsystem.reservation;
 
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -16,8 +17,11 @@ class HoldExpirationJob {
         this.holdService = holdService;
     }
 
-    // ponytail: runs on every instance; harmless because the UPDATEs are conditional. Add ShedLock if it gets heavy.
+    /**
+     * Once per interval in the whole cluster: the lock is kept for a full interval, so the other instances skip.
+     */
     @Scheduled(fixedDelayString = "${ticket.hold.cleanup-interval}")
+    @SchedulerLock(name = "hold-expiration", lockAtLeastFor = "${ticket.hold.cleanup-interval}")
     void releaseExpiredHolds() {
         int released = holdService.releaseExpired();
         if (released > 0) {

@@ -1,5 +1,6 @@
 package dev.thiagogomes.ticketsystem.checkout;
 
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -26,6 +27,7 @@ class PendingPaymentRecoveryJob {
     }
 
     @Scheduled(fixedDelayString = "${ticket.checkout.recovery-interval}")
+    @SchedulerLock(name = "pending-payment-recovery", lockAtLeastFor = "${ticket.checkout.recovery-interval}")
     void resumeStalePayments() {
         int resumed = checkoutService.resumePendingOrdersOlderThan(staleAfter);
         if (resumed > 0) {
