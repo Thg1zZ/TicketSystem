@@ -1,0 +1,13 @@
+global:
+  scrape_interval: 2s
+  evaluation_interval: 2s
+
+scrape_configs:
+  - job_name: ticket-system
+    metrics_path: /actuator/prometheus
+    # Descobre cada réplica pelo DNS do serviço "app" do compose: 1 ou N instâncias, sem mudar este arquivo
+    dns_sd_configs:
+      - names: [app]
+        type: A
+        port: 8082
+        refresh_interval: 10s

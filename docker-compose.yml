@@ -65,8 +65,10 @@ services:
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-ticket}
       ADMIN_TOKEN: ${ADMIN_TOKEN:-local-admin-token}
       TICKET_RESERVATION_STRATEGY: ${STRATEGY:-pessimistic}
-      # metrics só é exposto quando pedido (o teste de carga usa para provar as cobranças)
-      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: ${ACTUATOR_EXPOSURE:-health,info}
+      # Actuator completo só na porta interna 8082 (rede do Docker, sem publicar no host);
+      # a porta pública mantém apenas /livez e /readyz
+      MANAGEMENT_SERVER_PORT: 8082
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,metrics,prometheus
     depends_on:
       postgres:
         condition: service_healthy
@@ -74,6 +76,40 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+
+  # Observabilidade opcional: docker compose --profile observability up -d
+  prometheus:
+    image: prom/prometheus:v3.15.1@sha256:fa3302279710be2f21a8301ec17a8b4f2301fd829bd113839b3b6b02b6f191a2
+    profiles: ["observability"]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=2d
+    ports:
+      - "127.0.0.1:9091:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    mem_limit: 512m
+
+  grafana:
+    image: grafana/grafana:13.2.5@sha256:9f7aa1e1e3246aade5792d35a738049f7f32f89cd51d1956cf426a4e86268a84
+    profiles: ["observability"]
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USERNAME:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-ticket}
+      # Só leitura sem login, para abrir o painel direto (a porta só escuta em 127.0.0.1)
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/ticket-system.json
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    ports:
+      - "127.0.0.1:3001:3000"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    mem_limit: 768m
 
   # Só roda com --profile loadtest e --no-deps, sem recriar o app (ver loadtest/run-all.sh)
   k6:
