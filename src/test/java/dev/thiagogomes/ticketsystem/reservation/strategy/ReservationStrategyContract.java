@@ -1,13 +1,18 @@
-package dev.thiagogomes.ticketsystem.reservation;
+package dev.thiagogomes.ticketsystem.reservation.strategy;
 
-import dev.thiagogomes.ticketsystem.IntegrationTest;
+import dev.thiagogomes.ticketsystem.MutableClock;
 import dev.thiagogomes.ticketsystem.event.EventFixtures;
 import dev.thiagogomes.ticketsystem.event.EventFixtures.CreatedEvent;
 import dev.thiagogomes.ticketsystem.event.EventService;
 import dev.thiagogomes.ticketsystem.event.SeatRepository;
+import dev.thiagogomes.ticketsystem.reservation.HoldResponse;
+import dev.thiagogomes.ticketsystem.reservation.HoldService;
+import dev.thiagogomes.ticketsystem.reservation.SeatsUnavailableException;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -20,14 +25,14 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.IntFunction;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 /**
- * Many buyers released at the same instant against the same seat(s), on a real Postgres.
+ * Behavior every strategy must honor. Each subclass runs it against a real Postgres/Redis with one strategy active.
  */
-@IntegrationTest
-class SeatReservationConcurrencyTest {
+abstract class ReservationStrategyContract {
 
-    private static final int BUYERS = 50;
+    static final int BUYERS = 50;
 
     @Autowired
     HoldService holdService;
@@ -35,6 +40,22 @@ class SeatReservationConcurrencyTest {
     EventService eventService;
     @Autowired
     SeatRepository seatRepository;
+    @Autowired
+    SeatReservationStrategy activeStrategy;
+    @Autowired
+    MutableClock clock;
+
+    abstract Class<? extends SeatReservationStrategy> expectedStrategy();
+
+    @AfterEach
+    void resetClock() {
+        clock.reset();
+    }
+
+    @Test
+    void configuredStrategyIsActive() {
+        assertThat(activeStrategy).isInstanceOf(expectedStrategy());
+    }
 
     @Test
     void exactlyOneBuyerWinsTheSameSeat() throws Exception {
@@ -60,16 +81,49 @@ class SeatReservationConcurrencyTest {
 
         assertThat(result.unexpected()).as("deadlocks or other failures").isEmpty();
         assertThat(result.winners()).hasSize(1);
+        assertThat(result.winners().getFirst().seats()).hasSize(2);
         assertThat(result.conflicts()).isEqualTo(BUYERS - 1);
     }
 
-    private RaceResult race(IntFunction<Callable<HoldResponse>> attemptForBuyer) throws Exception {
+    @Test
+    void takenSeatIsRejectedAndFreeSeatOfSameRequestStaysFree() {
+        CreatedEvent event = EventFixtures.createEvent(eventService, 2);
+        holdService.create(event.id(), "alice", List.of(event.seatIds().get(0)));
+
+        assertThatExceptionOfType(SeatsUnavailableException.class)
+                .isThrownBy(() -> holdService.create(event.id(), "bob", event.seatIds()));
+
+        holdService.create(event.id(), "carol", List.of(event.seatIds().get(1)));
+    }
+
+    @Test
+    void expiredHoldCanBeTakenOver() {
+        CreatedEvent event = EventFixtures.createEvent(eventService, 1);
+        holdService.create(event.id(), "alice", event.seatIds());
+
+        clock.advance(Duration.ofMinutes(11));
+
+        HoldResponse bobHold = holdService.create(event.id(), "bob", event.seatIds());
+        assertThat(seatRepository.findById(event.seatIds().getFirst()).orElseThrow().getHoldId()).isEqualTo(bobHold.id());
+    }
+
+    @Test
+    void releasedSeatCanBeHeldAgainImmediately() {
+        CreatedEvent event = EventFixtures.createEvent(eventService, 1);
+        HoldResponse aliceHold = holdService.create(event.id(), "alice", event.seatIds());
+
+        holdService.release(aliceHold.id(), "alice");
+
+        holdService.create(event.id(), "bob", event.seatIds());
+    }
+
+    RaceResult race(IntFunction<Callable<HoldResponse>> attemptForBuyer) throws Exception {
         CountDownLatch startGate = new CountDownLatch(1);
         List<Future<HoldResponse>> attempts = new ArrayList<>();
 
         try (ExecutorService executor = Executors.newFixedThreadPool(BUYERS)) {
             for (int buyer = 0; buyer < BUYERS; buyer++) {
-                var attempt = attemptForBuyer.apply(buyer);
+                Callable<HoldResponse> attempt = attemptForBuyer.apply(buyer);
                 attempts.add(executor.submit(() -> {
                     startGate.await();
                     return attempt.call();
@@ -95,6 +149,6 @@ class SeatReservationConcurrencyTest {
         }
     }
 
-    private record RaceResult(List<HoldResponse> winners, int conflicts, List<Throwable> unexpected) {
+    record RaceResult(List<HoldResponse> winners, int conflicts, List<Throwable> unexpected) {
     }
 }

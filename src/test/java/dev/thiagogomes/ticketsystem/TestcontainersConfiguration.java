@@ -9,8 +9,15 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.rabbitmq.RabbitMQContainer;
 import org.testcontainers.utility.DockerImageName;
 
+/**
+ * Containers are static so every Spring context (one per reservation strategy) shares the same instances.
+ */
 @TestConfiguration(proxyBeanMethods = false)
 public class TestcontainersConfiguration {
+
+    private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(DockerImageName.parse("postgres:17-alpine"));
+    private static final GenericContainer<?> REDIS = new GenericContainer<>(DockerImageName.parse("redis:8-alpine")).withExposedPorts(6379);
+    private static final RabbitMQContainer RABBIT = new RabbitMQContainer(DockerImageName.parse("rabbitmq:4-management-alpine"));
 
     @Bean
     @Primary
@@ -21,18 +28,18 @@ public class TestcontainersConfiguration {
     @Bean
     @ServiceConnection
     PostgreSQLContainer postgresContainer() {
-        return new PostgreSQLContainer(DockerImageName.parse("postgres:17-alpine"));
+        return POSTGRES;
     }
 
     @Bean
     @ServiceConnection(name = "redis")
     GenericContainer<?> redisContainer() {
-        return new GenericContainer<>(DockerImageName.parse("redis:8-alpine")).withExposedPorts(6379);
+        return REDIS;
     }
 
     @Bean
     @ServiceConnection
     RabbitMQContainer rabbitContainer() {
-        return new RabbitMQContainer(DockerImageName.parse("rabbitmq:4-management-alpine"));
+        return RABBIT;
     }
 }
