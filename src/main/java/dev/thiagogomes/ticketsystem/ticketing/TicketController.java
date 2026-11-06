@@ -1,12 +1,11 @@
 package dev.thiagogomes.ticketsystem.ticketing;
 
+import dev.thiagogomes.ticketsystem.shared.ValidUserId;
 import dev.thiagogomes.ticketsystem.checkout.OrderService;
 import dev.thiagogomes.ticketsystem.shared.error.ConflictException;
 import dev.thiagogomes.ticketsystem.shared.error.NotFoundException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -33,14 +32,14 @@ class TicketController {
 
     @Operation(summary = "Tickets of an order (issued asynchronously, a few moments after confirmation)")
     @GetMapping("/orders/{orderId}/tickets")
-    List<TicketResponse> list(@PathVariable UUID orderId, @RequestHeader(USER_ID) @NotBlank @Size(max = 64) String userId) {
+    List<TicketResponse> list(@PathVariable UUID orderId, @RequestHeader(USER_ID) @ValidUserId String userId) {
         orderService.find(orderId, userId); // 404 unless the caller owns the order
         return ticketRepository.findByOrderIdOrderBySeatId(orderId).stream().map(TicketResponse::from).toList();
     }
 
     @Operation(summary = "QR code (PNG) to show at the gate")
     @GetMapping(value = "/tickets/{ticketId}/qr", produces = MediaType.IMAGE_PNG_VALUE)
-    byte[] qrCode(@PathVariable UUID ticketId, @RequestHeader(USER_ID) @NotBlank @Size(max = 64) String userId) {
+    byte[] qrCode(@PathVariable UUID ticketId, @RequestHeader(USER_ID) @ValidUserId String userId) {
         Ticket ticket = ticketRepository.findOwned(ticketId, userId)
                 .orElseThrow(() -> new NotFoundException("Ticket %s not found".formatted(ticketId)));
         if (ticket.getStatus() != TicketStatus.VALID) {

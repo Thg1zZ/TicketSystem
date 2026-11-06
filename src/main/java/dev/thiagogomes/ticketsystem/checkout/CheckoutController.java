@@ -1,10 +1,9 @@
 package dev.thiagogomes.ticketsystem.checkout;
 
+import dev.thiagogomes.ticketsystem.shared.ValidUserId;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Size;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -32,7 +31,7 @@ class CheckoutController {
     @PostMapping("/holds/{holdId}/checkout")
     ResponseEntity<OrderResponse> checkout(
             @PathVariable UUID holdId,
-            @RequestHeader(USER_ID) @NotBlank @Size(max = 64) String userId,
+            @RequestHeader(USER_ID) @ValidUserId String userId,
             @RequestHeader(IDEMPOTENCY_KEY) @Pattern(regexp = "[A-Za-z0-9_-]{8,100}") String idempotencyKey,
             UriComponentsBuilder uriBuilder) {
         CheckoutResult result = checkoutService.checkout(holdId, userId, idempotencyKey);

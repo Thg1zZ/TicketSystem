@@ -1,10 +1,9 @@
 package dev.thiagogomes.ticketsystem.reservation;
 
+import dev.thiagogomes.ticketsystem.shared.ValidUserId;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -32,7 +31,7 @@ class HoldController {
     @PostMapping("/events/{eventId}/holds")
     @ResponseStatus(HttpStatus.CREATED)
     HoldResponse create(@PathVariable Long eventId,
-                        @RequestHeader(USER_ID) @NotBlank @Size(max = 64) String userId,
+                        @RequestHeader(USER_ID) @ValidUserId String userId,
                         @Valid @RequestBody CreateHoldRequest request) {
         return holdService.create(eventId, userId, request.seatIds());
     }
@@ -40,7 +39,7 @@ class HoldController {
     @Operation(summary = "Release a hold, making its seats available again")
     @DeleteMapping("/holds/{holdId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    void release(@PathVariable UUID holdId, @RequestHeader(USER_ID) @NotBlank @Size(max = 64) String userId) {
+    void release(@PathVariable UUID holdId, @RequestHeader(USER_ID) @ValidUserId String userId) {
         holdService.release(holdId, userId);
     }
 }

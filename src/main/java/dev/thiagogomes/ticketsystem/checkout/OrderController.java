@@ -1,9 +1,8 @@
 package dev.thiagogomes.ticketsystem.checkout;
 
+import dev.thiagogomes.ticketsystem.shared.ValidUserId;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -26,13 +25,13 @@ class OrderController {
 
     @Operation(summary = "Get one of your orders")
     @GetMapping("/orders/{orderId}")
-    OrderResponse get(@PathVariable UUID orderId, @RequestHeader(USER_ID) @NotBlank @Size(max = 64) String userId) {
+    OrderResponse get(@PathVariable UUID orderId, @RequestHeader(USER_ID) @ValidUserId String userId) {
         return orderService.find(orderId, userId);
     }
 
     @Operation(summary = "Cancel a confirmed order before the event: seats return to sale, tickets are voided, payment refunded")
     @PostMapping("/orders/{orderId}/cancel")
-    OrderResponse cancel(@PathVariable UUID orderId, @RequestHeader(USER_ID) @NotBlank @Size(max = 64) String userId) {
+    OrderResponse cancel(@PathVariable UUID orderId, @RequestHeader(USER_ID) @ValidUserId String userId) {
         return orderService.cancel(orderId, userId);
     }
 }
