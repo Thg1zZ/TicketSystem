@@ -42,6 +42,8 @@ const state = {
     order: null,
     tickets: [],
     qrUrls: new Map(),
+    liveSeats: null, // EventSource while the live stream is connected
+    live: false,
 };
 
 class ApiError extends Error {
@@ -178,6 +180,7 @@ async function loadEvent(eventId) {
         const sectors = data.sectors.map((sector) => `${sector.name} ${brl.format(sector.price)}`).join(' · ');
         $('event-meta').textContent = `${data.venue} · ${dateTime.format(new Date(data.startsAt))} · ${sectors}`;
         await refreshSeats({ log: true });
+        connectLiveSeats();
         return true;
     } catch (error) {
         if (error.status === 404) store.set('localStorage', 'ts.event', null);
@@ -194,6 +197,31 @@ async function refreshSeats({ log = false } = {}) {
     } catch (error) {
         if (log) toast(error.message, 'error');
     }
+}
+
+/**
+ * Server-Sent Events push the map when it changes. Polling stays as the fallback: it only runs while the stream
+ * is down (the browser reconnects by itself, or gives up for good on a 503 from a full instance).
+ */
+function connectLiveSeats() {
+    state.liveSeats?.close();
+    setLive(false);
+    if (!state.eventId || typeof EventSource === 'undefined') return;
+    const source = new EventSource(`/events/${state.eventId}/seats/stream`);
+    source.addEventListener('seats', (message) => {
+        if (!state.live) logCall('SSE', `/events/${state.eventId}/seats/stream`, 200, 'mapa ao vivo conectado');
+        setLive(true);
+        applySeatMap(JSON.parse(message.data));
+    });
+    source.addEventListener('error', () => setLive(false));
+    state.liveSeats = source;
+}
+
+function setLive(live) {
+    state.live = live;
+    const indicator = $('live-status');
+    indicator.dataset.live = String(live);
+    indicator.textContent = live ? 'ao vivo' : 'atualizando a cada 2 s';
 }
 
 function applySeatMap(map) {
@@ -627,10 +655,10 @@ async function init() {
     setInterval(checkHealth, HEALTH_MS);
     setInterval(tickCountdown, 1000);
     setInterval(() => {
-        if (document.visibilityState === 'visible') refreshSeats();
+        if (document.visibilityState === 'visible' && !state.live) refreshSeats();
     }, POLL_SEATS_MS);
     document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') refreshSeats();
+        if (document.visibilityState === 'visible' && !state.live) refreshSeats();
     });
 
     const savedEvent = Number(store.get('localStorage', 'ts.event'));

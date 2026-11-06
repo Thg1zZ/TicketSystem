@@ -154,6 +154,10 @@ input:invalid { border-color: var(--danger); }
 
 .legend { display: flex; flex-wrap: wrap; gap: 16px; list-style: none; padding: 0; margin: 18px 0 8px; font-size: .82rem; color: var(--muted); }
 .legend li { display: flex; align-items: center; gap: 6px; }
+.legend .live { margin-left: auto; }
+.legend .live::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.legend .live[data-live="true"] { color: var(--ok); }
+.legend .live[data-live="true"]::before { background: var(--ok); box-shadow: 0 0 0 4px var(--ok-soft); }
 
 /* Seat map */
 .seatmap { overflow-x: auto; padding: 8px 4px 4px; }
