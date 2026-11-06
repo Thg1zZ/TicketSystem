@@ -17,6 +17,7 @@ configuração, e compará-las com teste de carga (k6)** — com prova, via SQL,
 ---
 
 ## Sumário
+- [Demo visual](#demo-visual)
 - [Arquitetura](#arquitetura)
 - [Fluxo de compra](#fluxo-de-compra)
 - [Estratégias de concorrência](#estratégias-de-concorrência)
@@ -30,6 +31,24 @@ configuração, e compará-las com teste de carga (k6)** — com prova, via SQL,
 - [Limitações conhecidas e próximos passos](#limitações-conhecidas-e-próximos-passos)
 
 ---
+
+## Demo visual
+
+Com a stack no ar, abra **http://localhost:8081/** — uma página em HTML, CSS e JavaScript puros (sem framework nem
+build), servida pela própria aplicação e usando só a API pública:
+
+- **mapa de assentos** com palco e cores por estado (livre, selecionado, seu, reservado, vendido), atualizado a cada 2 s;
+- **fluxo completo:** escolher até 4 assentos → reservar (contador de 10:00) → pagar (a `Idempotency-Key` é gerada e
+  exibida; pagar de novo nunca cobra duas vezes) → ingressos com **QR code** emitidos via RabbitMQ → cancelar;
+- **atividade da API** ao lado: cada chamada com status e mensagem (201, 409, 402…), para ver o backend reagindo;
+- tema claro/escuro automático e layout para celular.
+
+**Demonstração de concorrência:** abra duas abas (cada aba é um comprador diferente, mude o nome no topo se quiser),
+selecione o mesmo assento nas duas e clique em *Reservar* nas duas. Uma ganha; a outra recebe **409** e o assento
+pisca em vermelho. Criar eventos pede o token de admin (`ADMIN_TOKEN` do `.env`).
+
+Por segurança, todo texto vindo da API entra na página via `textContent` (nunca `innerHTML`) e o token de admin não é
+salvo no navegador.
 
 ## Arquitetura
 
@@ -256,6 +275,7 @@ Para outros ambientes, copie [`.env.example`](.env.example) para `.env` e troque
 
 | Serviço | Endereço |
 |---|---|
+| Demo visual | http://localhost:8081/ |
 | API / Swagger | http://localhost:8081/swagger-ui.html |
 | Health | http://localhost:8081/actuator/health |
 | RabbitMQ (painel) | http://localhost:15673 (usuário/senha do `.env`; padrão ticket / ticket) |
