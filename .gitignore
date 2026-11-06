@@ -1,0 +1,28 @@
+target/
+.mvn/wrapper/maven-wrapper.jar
+
+### IDEs ###
+.idea
+*.iws
+*.iml
+*.ipr
+.vscode/
+.classpath
+.project
+.settings
+.factorypath
+
+### Variáveis de ambiente (segredos) — nunca versionar ###
+.env
+.env.*
+!.env.example
+
+### Documentação local / contexto do Claude (CLAUDE.md, docs/*.md) ###
+# Só o README.md da raiz vai para o GitHub (vitrine do portfólio)
+*.md
+!/README.md
+.claude/
+
+### Logs e resultados locais ###
+*.log
+loadtest/results/
