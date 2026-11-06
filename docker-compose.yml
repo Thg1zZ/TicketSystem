@@ -77,7 +77,7 @@ services:
 
   # Só roda com --profile loadtest e --no-deps, sem recriar o app (ver loadtest/run-all.sh)
   k6:
-    image: grafana/k6:2.2.0@sha256:9bd01d6941fca969cb61bb57d2da5ee9b385fe2aa8881df3798c196564d6ace6
+    image: grafana/k6:2.3.0@sha256:2dd4756ec6e14e62778916e1eb850108e4b499304c02df56760fa0bdb0fba0b8
     profiles: ["loadtest"]
     environment:
       BASE_URL: http://app:8081
