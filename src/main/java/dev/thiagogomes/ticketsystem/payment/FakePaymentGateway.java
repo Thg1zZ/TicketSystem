@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -56,6 +57,29 @@ public class FakePaymentGateway {
             charge = newCharge;
             charge.run();
         }
+        return await(idempotencyKey, charge);
+    }
+
+    /**
+     * Looks a charge up without ever creating one (what a reconciliation job must use).
+     * Waits if the charge is still in flight.
+     */
+    public Optional<PaymentResult> findCharge(String idempotencyKey) {
+        FutureTask<PaymentResult> charge = charges.get(idempotencyKey);
+        return charge == null ? Optional.empty() : Optional.of(await(idempotencyKey, charge));
+    }
+
+    /**
+     * Idempotent, and only an approved charge has money to give back.
+     */
+    public void refund(String idempotencyKey) {
+        boolean refundable = findCharge(idempotencyKey).filter(PaymentResult::approved).isPresent();
+        if (refundable && refunds.add(idempotencyKey)) {
+            meters.counter("payments", "outcome", "refunded").increment();
+        }
+    }
+
+    private PaymentResult await(String idempotencyKey, FutureTask<PaymentResult> charge) {
         try {
             return charge.get();
         } catch (InterruptedException e) {
@@ -64,12 +88,6 @@ public class FakePaymentGateway {
         } catch (ExecutionException e) {
             charges.remove(idempotencyKey, charge); // a crashed attempt must not poison later retries
             throw new IllegalStateException("Payment processing failed", e.getCause());
-        }
-    }
-
-    public void refund(String idempotencyKey) {
-        if (charges.containsKey(idempotencyKey) && refunds.add(idempotencyKey)) {
-            meters.counter("payments", "outcome", "refunded").increment();
         }
     }
 

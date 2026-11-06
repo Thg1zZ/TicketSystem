@@ -32,6 +32,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -146,16 +147,34 @@ class CheckoutPaymentFailureTest {
     }
 
     @Test
-    void orderStuckInPendingIsResumedByRecovery() throws Exception {
-        doThrow(new IllegalStateException("gateway timeout")).doCallRealMethod().when(gateway).charge(anyString(), any());
+    void abandonedOrderThatWasNeverChargedIsClosedWithoutCharging() throws Exception {
+        doThrow(new IllegalStateException("gateway timeout")).when(gateway).charge(anyString(), any());
         checkout("key-timeout-001").andExpect(status().isServiceUnavailable());
-        assertThat(order("key-timeout-001").getStatus()).isEqualTo(OrderStatus.PENDING_PAYMENT);
         clearInvocations(gateway);
 
         clock.advance(Duration.ofMinutes(3));
         checkoutService.resumePendingOrdersOlderThan(Duration.ofMinutes(2));
 
-        assertThat(order("key-timeout-001").getStatus()).isEqualTo(OrderStatus.CONFIRMED);
+        assertThat(order("key-timeout-001").getStatus()).isEqualTo(OrderStatus.PAYMENT_FAILED);
+        verify(gateway, never()).charge(anyString(), any());
+        assertThat(seatRepository.findById(event.seatIds().getFirst()).orElseThrow().getStatus()).isEqualTo(SeatStatus.AVAILABLE);
+    }
+
+    @Test
+    void orderChargedRightBeforeACrashIsConfirmedByRecovery() throws Exception {
+        doAnswer(invocation -> {
+            invocation.callRealMethod();
+            throw new IllegalStateException("instance crashed after the charge");
+        }).when(gateway).charge(anyString(), any());
+        checkout("key-crashed-001").andExpect(status().isServiceUnavailable());
+        assertThat(order("key-crashed-001").getStatus()).isEqualTo(OrderStatus.PENDING_PAYMENT);
+        clearInvocations(gateway);
+
+        clock.advance(Duration.ofMinutes(3));
+        checkoutService.resumePendingOrdersOlderThan(Duration.ofMinutes(2));
+
+        assertThat(order("key-crashed-001").getStatus()).isEqualTo(OrderStatus.CONFIRMED);
+        verify(gateway, never()).charge(anyString(), any());
         assertThat(seatRepository.findById(event.seatIds().getFirst()).orElseThrow().getStatus()).isEqualTo(SeatStatus.SOLD);
     }
 

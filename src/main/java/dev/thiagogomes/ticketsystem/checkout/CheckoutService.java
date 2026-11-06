@@ -22,6 +22,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -73,23 +74,30 @@ public class CheckoutService {
         if (order.isSettled()) {
             return result(order.getId(), true, DECLINED_REPLAY);
         }
-        String failureReason = settle(order);
+        String failureReason = settle(order, charge(order));
         return result(order.getId(), false, failureReason);
     }
 
     /**
      * Drives orders left in PENDING_PAYMENT (client gave up, instance crashed) to a final state.
+     * Reconciliation never creates a charge: it only finishes what a lost request started.
      */
     public int resumePendingOrdersOlderThan(Duration age) {
         List<UUID> stale = orderRepository.findPendingIdsUpdatedBefore(clock.instant().minus(age));
         for (UUID orderId : stale) {
             try {
-                orderRepository.findById(orderId).filter(order -> !order.isSettled()).ifPresent(this::settle);
+                orderRepository.findById(orderId).filter(order -> !order.isSettled()).ifPresent(this::reconcile);
             } catch (RuntimeException e) {
                 log.error("Could not resume pending order {}", orderId, e);
             }
         }
         return stale.size();
+    }
+
+    private void reconcile(Order order) {
+        paymentGateway.findCharge(order.paymentKey()).ifPresentOrElse(
+                payment -> settle(order, payment),
+                () -> markFailed(order)); // never charged: the client gave up before paying
     }
 
     private Order placeOrResume(UUID holdId, String userId, String idempotencyKey) {
@@ -123,21 +131,22 @@ public class CheckoutService {
     /**
      * @return null when confirmed, otherwise why the order failed
      */
-    private String settle(Order order) {
-        PaymentResult payment = charge(order);
+    private String settle(Order order, PaymentResult payment) {
         if (!payment.approved()) {
             markFailed(order);
             return payment.declineReason();
         }
         try {
-            transaction.executeWithoutResult(status -> confirm(order, payment.reference()));
-            return null;
+            if (Boolean.TRUE.equals(transaction.execute(status -> confirm(order, payment.reference())))) {
+                return null;
+            }
         } catch (SeatsLostException | DataIntegrityViolationException lost) {
             log.warn("Order {} lost its seats during payment, refunding", order.getId());
-            paymentGateway.refund(order.paymentKey());
-            markFailed(order);
-            return SEATS_LOST;
         }
+        // Approved but not confirmed: the money has to go back (refunds are idempotent)
+        paymentGateway.refund(order.paymentKey());
+        markFailed(order);
+        return SEATS_LOST;
     }
 
     /**
@@ -153,9 +162,14 @@ public class CheckoutService {
         }
     }
 
-    private void confirm(Order order, String paymentReference) {
+    /**
+     * @return false when a concurrent request already settled the order as failed, so this charge must be refunded
+     */
+    private boolean confirm(Order order, String paymentReference) {
         if (orderRepository.confirm(order.getId(), paymentReference, clock.instant()) == 0) {
-            return; // settled by a concurrent request for the same order
+            return orderRepository.findById(order.getId())
+                    .map(settled -> settled.getStatus() != OrderStatus.PAYMENT_FAILED)
+                    .orElse(false);
         }
         int expectedSeats = orderRepository.findWithItemsById(order.getId()).orElseThrow().getItems().size();
         if (seatRepository.sellHeldBy(order.getHoldId()) != expectedSeats) {
@@ -163,6 +177,7 @@ public class CheckoutService {
         }
         orderItemRepository.setActive(order.getId(), true);
         outbox.append(Messaging.ORDER_CONFIRMED, order.getId(), new OrderConfirmedEvent(order.getId(), order.getUserId()));
+        return true;
     }
 
     private void markFailed(Order order) {
@@ -177,7 +192,8 @@ public class CheckoutService {
         OrderResponse order = transaction.execute(status ->
                 OrderResponse.from(orderRepository.findWithItemsById(orderId).orElseThrow()));
         if (order.status() == OrderStatus.PAYMENT_FAILED) {
-            throw new PaymentRequiredException(failureReason, Map.of("orderId", orderId));
+            throw new PaymentRequiredException(Objects.requireNonNullElse(failureReason, DECLINED_REPLAY),
+                    Map.of("orderId", orderId));
         }
         return new CheckoutResult(order, replayed);
     }
