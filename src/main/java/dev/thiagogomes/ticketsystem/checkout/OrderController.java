@@ -18,9 +18,11 @@ import static dev.thiagogomes.ticketsystem.shared.RequestHeaders.USER_ID;
 class OrderController {
 
     private final OrderService orderService;
+    private final OrderCancellationService cancellationService;
 
-    OrderController(OrderService orderService) {
+    OrderController(OrderService orderService, OrderCancellationService cancellationService) {
         this.orderService = orderService;
+        this.cancellationService = cancellationService;
     }
 
     @Operation(summary = "Get one of your orders")
@@ -32,6 +34,6 @@ class OrderController {
     @Operation(summary = "Cancel a confirmed order before the event: seats return to sale, tickets are voided, payment refunded")
     @PostMapping("/orders/{orderId}/cancel")
     OrderResponse cancel(@PathVariable UUID orderId, @RequestHeader(USER_ID) @ValidUserId String userId) {
-        return orderService.cancel(orderId, userId);
+        return cancellationService.cancel(orderId, userId);
     }
 }

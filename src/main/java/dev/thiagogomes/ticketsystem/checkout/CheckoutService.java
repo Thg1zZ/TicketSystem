@@ -1,13 +1,13 @@
 package dev.thiagogomes.ticketsystem.checkout;
 
 import dev.thiagogomes.ticketsystem.event.Seat;
-import dev.thiagogomes.ticketsystem.event.SeatRepository;
 import dev.thiagogomes.ticketsystem.messaging.Messaging;
 import dev.thiagogomes.ticketsystem.messaging.Outbox;
 import dev.thiagogomes.ticketsystem.payment.FakePaymentGateway;
 import dev.thiagogomes.ticketsystem.payment.PaymentResult;
 import dev.thiagogomes.ticketsystem.reservation.HoldService;
 import dev.thiagogomes.ticketsystem.reservation.SeatHold;
+import dev.thiagogomes.ticketsystem.reservation.SeatInventoryRepository;
 import dev.thiagogomes.ticketsystem.shared.error.BusinessRuleException;
 import dev.thiagogomes.ticketsystem.shared.error.ConflictException;
 import dev.thiagogomes.ticketsystem.shared.error.PaymentRequiredException;
@@ -44,7 +44,7 @@ public class CheckoutService {
 
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
-    private final SeatRepository seatRepository;
+    private final SeatInventoryRepository seatInventory;
     private final HoldService holdService;
     private final FakePaymentGateway paymentGateway;
     private final Outbox outbox;
@@ -53,7 +53,7 @@ public class CheckoutService {
 
     public CheckoutService(OrderRepository orderRepository,
                            OrderItemRepository orderItemRepository,
-                           SeatRepository seatRepository,
+                           SeatInventoryRepository seatInventory,
                            HoldService holdService,
                            FakePaymentGateway paymentGateway,
                            Outbox outbox,
@@ -62,7 +62,7 @@ public class CheckoutService {
         this.outbox = outbox;
         this.orderRepository = orderRepository;
         this.orderItemRepository = orderItemRepository;
-        this.seatRepository = seatRepository;
+        this.seatInventory = seatInventory;
         this.holdService = holdService;
         this.paymentGateway = paymentGateway;
         this.transaction = transaction;
@@ -121,7 +121,7 @@ public class CheckoutService {
 
     private Order place(UUID holdId, String userId, String idempotencyKey) {
         SeatHold hold = holdService.convertForCheckout(holdId, userId);
-        List<Seat> seats = seatRepository.findHeldBy(hold.getId());
+        List<Seat> seats = seatInventory.findHeldBy(hold.getId());
         if (seats.isEmpty()) {
             throw new ConflictException("Hold has no seats left");
         }
@@ -172,7 +172,7 @@ public class CheckoutService {
                     .orElse(false);
         }
         int expectedSeats = orderRepository.findWithItemsById(order.getId()).orElseThrow().getItems().size();
-        if (seatRepository.sellHeldBy(order.getHoldId()) != expectedSeats) {
+        if (seatInventory.sellHeldBy(order.getHoldId()) != expectedSeats) {
             throw new SeatsLostException();
         }
         orderItemRepository.setActive(order.getId(), true);

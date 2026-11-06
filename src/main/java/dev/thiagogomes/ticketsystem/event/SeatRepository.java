@@ -1,14 +1,13 @@
 package dev.thiagogomes.ticketsystem.event;
 
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
-import java.time.Instant;
-import java.util.Collection;
 import java.util.List;
-import java.util.UUID;
 
+/**
+ * Read side of seats. State changes go through {@code reservation.SeatInventoryRepository}.
+ */
 public interface SeatRepository extends JpaRepository<Seat, Long> {
 
     @Query("""
@@ -19,89 +18,4 @@ public interface SeatRepository extends JpaRepository<Seat, Long> {
             order by s.sector.id, s.rowLabel, s.seatNumber
             """)
     List<SeatView> findSeatMap(Long eventId);
-
-    /**
-     * Row lock on the seats only ("OF s"), always in id order so two buyers never wait on each other in a cycle.
-     */
-    @Query(value = """
-            SELECT s.* FROM seat s
-            JOIN sector sec ON sec.id = s.sector_id
-            WHERE s.id IN (:seatIds) AND sec.event_id = :eventId
-            ORDER BY s.id
-            FOR UPDATE OF s
-            """, nativeQuery = true)
-    List<Seat> lockForUpdate(Long eventId, Collection<Long> seatIds);
-
-    /**
-     * Plain read, no lock. Sector is fetched so the response can be built from detached entities.
-     */
-    @Query("""
-            select s from Seat s join fetch s.sector sec
-            where s.id in :seatIds and sec.event.id = :eventId
-            order by s.id
-            """)
-    List<Seat> findForEvent(Long eventId, Collection<Long> seatIds);
-
-    /**
-     * Check-and-set in a single statement: concurrent UPDATEs on the same row wait for each other and the loser
-     * re-evaluates the WHERE against the winner's committed row, matching nothing. Callers compare the row count.
-     */
-    @Modifying(flushAutomatically = true)
-    @Query("""
-            update Seat s
-            set s.status = dev.thiagogomes.ticketsystem.event.SeatStatus.HELD,
-                s.holdId = :holdId, s.heldUntil = :heldUntil, s.version = s.version + 1
-            where s.id in :seatIds
-              and (s.status = dev.thiagogomes.ticketsystem.event.SeatStatus.AVAILABLE
-                   or (s.status = dev.thiagogomes.ticketsystem.event.SeatStatus.HELD and s.heldUntil <= :now))
-            """)
-    int claimIfAvailable(Collection<Long> seatIds, UUID holdId, Instant heldUntil, Instant now);
-
-    @Query("select s.id from Seat s where s.holdId = :holdId and s.status = dev.thiagogomes.ticketsystem.event.SeatStatus.HELD")
-    List<Long> findIdsHeldBy(UUID holdId);
-
-    @Query("""
-            select s from Seat s join fetch s.sector
-            where s.holdId = :holdId and s.status = dev.thiagogomes.ticketsystem.event.SeatStatus.HELD
-            order by s.id
-            """)
-    List<Seat> findHeldBy(UUID holdId);
-
-    /**
-     * Succeeds only for seats this hold still owns; a seat taken over after the hold deadline is not counted.
-     */
-    @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query("""
-            update Seat s
-            set s.status = dev.thiagogomes.ticketsystem.event.SeatStatus.SOLD, s.heldUntil = null, s.version = s.version + 1
-            where s.holdId = :holdId and s.status = dev.thiagogomes.ticketsystem.event.SeatStatus.HELD
-            """)
-    int sellHeldBy(UUID holdId);
-
-    @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query("""
-            update Seat s
-            set s.status = dev.thiagogomes.ticketsystem.event.SeatStatus.AVAILABLE,
-                s.holdId = null, s.heldUntil = null, s.version = s.version + 1
-            where s.id in :seatIds and s.status = dev.thiagogomes.ticketsystem.event.SeatStatus.SOLD
-            """)
-    int releaseSold(Collection<Long> seatIds);
-
-    @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query("""
-            update Seat s
-            set s.status = dev.thiagogomes.ticketsystem.event.SeatStatus.AVAILABLE,
-                s.holdId = null, s.heldUntil = null, s.version = s.version + 1
-            where s.holdId = :holdId and s.status = dev.thiagogomes.ticketsystem.event.SeatStatus.HELD
-            """)
-    int releaseHeldBy(UUID holdId);
-
-    @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query("""
-            update Seat s
-            set s.status = dev.thiagogomes.ticketsystem.event.SeatStatus.AVAILABLE,
-                s.holdId = null, s.heldUntil = null, s.version = s.version + 1
-            where s.status = dev.thiagogomes.ticketsystem.event.SeatStatus.HELD and s.heldUntil <= :now
-            """)
-    int releaseExpired(Instant now);
 }

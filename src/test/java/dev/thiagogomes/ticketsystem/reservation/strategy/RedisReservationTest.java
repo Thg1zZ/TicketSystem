@@ -2,7 +2,7 @@ package dev.thiagogomes.ticketsystem.reservation.strategy;
 
 import dev.thiagogomes.ticketsystem.IntegrationTest;
 import dev.thiagogomes.ticketsystem.checkout.CheckoutService;
-import dev.thiagogomes.ticketsystem.checkout.OrderService;
+import dev.thiagogomes.ticketsystem.checkout.OrderCancellationService;
 import dev.thiagogomes.ticketsystem.event.EventFixtures;
 import dev.thiagogomes.ticketsystem.event.EventFixtures.CreatedEvent;
 import dev.thiagogomes.ticketsystem.reservation.HoldResponse;
@@ -27,7 +27,7 @@ class RedisReservationTest extends ReservationStrategyContract {
     @Autowired
     CheckoutService checkoutService;
     @Autowired
-    OrderService orderService;
+    OrderCancellationService cancellationService;
 
     @Override
     Class<? extends SeatReservationStrategy> expectedStrategy() {
@@ -74,7 +74,7 @@ class RedisReservationTest extends ReservationStrategyContract {
         HoldResponse aliceHold = holdService.create(event.id(), "alice", event.seatIds());
         UUID orderId = checkoutService.checkout(aliceHold.id(), "alice", "redis-cancel-" + UUID.randomUUID()).order().id();
 
-        orderService.cancel(orderId, "alice");
+        cancellationService.cancel(orderId, "alice");
 
         assertThat(redis.hasKey(key(event))).isFalse();
         holdService.create(event.id(), "bob", event.seatIds());

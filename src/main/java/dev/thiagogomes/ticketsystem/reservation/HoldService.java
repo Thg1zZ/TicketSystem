@@ -3,7 +3,6 @@ package dev.thiagogomes.ticketsystem.reservation;
 import dev.thiagogomes.ticketsystem.event.Event;
 import dev.thiagogomes.ticketsystem.event.EventRepository;
 import dev.thiagogomes.ticketsystem.event.Seat;
-import dev.thiagogomes.ticketsystem.event.SeatRepository;
 import dev.thiagogomes.ticketsystem.reservation.strategy.SeatReservationStrategy;
 import dev.thiagogomes.ticketsystem.shared.error.BusinessRuleException;
 import dev.thiagogomes.ticketsystem.shared.error.ConflictException;
@@ -31,7 +30,7 @@ public class HoldService {
     private static final String ACTIVE_HOLD_MESSAGE = "User already has an active hold for this event";
 
     private final SeatHoldRepository holdRepository;
-    private final SeatRepository seatRepository;
+    private final SeatInventoryRepository seatInventory;
     private final EventRepository eventRepository;
     private final SeatReservationStrategy reservationStrategy;
     private final TransactionTemplate transaction;
@@ -39,7 +38,7 @@ public class HoldService {
     private final Duration holdTtl;
 
     public HoldService(SeatHoldRepository holdRepository,
-                       SeatRepository seatRepository,
+                       SeatInventoryRepository seatInventory,
                        EventRepository eventRepository,
                        SeatReservationStrategy reservationStrategy,
                        TransactionTemplate transaction,
@@ -47,7 +46,7 @@ public class HoldService {
                        @Value("${ticket.hold.ttl}") Duration holdTtl) {
         this.transaction = transaction;
         this.holdRepository = holdRepository;
-        this.seatRepository = seatRepository;
+        this.seatInventory = seatInventory;
         this.eventRepository = eventRepository;
         this.reservationStrategy = reservationStrategy;
         this.clock = clock;
@@ -78,6 +77,12 @@ public class HoldService {
         SeatHold hold = persistNewHold(new SeatHold(eventId, userId, now.plus(holdTtl)));
         List<Seat> seats = reservationStrategy.reserve(eventId, seatIds, hold, now);
         return HoldResponse.of(hold, seats);
+    }
+
+    @Transactional(readOnly = true)
+    public HoldResponse find(UUID holdId, String userId) {
+        SeatHold hold = findOwned(holdId, userId);
+        return HoldResponse.of(hold, seatInventory.findAssignedTo(holdId));
     }
 
     @Transactional
@@ -124,7 +129,7 @@ public class HoldService {
     @Transactional
     public int releaseExpired() {
         Instant now = clock.instant();
-        int releasedSeats = seatRepository.releaseExpired(now);
+        int releasedSeats = seatInventory.releaseExpired(now);
         holdRepository.expireDue(now);
         return releasedSeats;
     }
@@ -151,8 +156,8 @@ public class HoldService {
 
     private void closeHold(SeatHold hold, HoldStatus from, HoldStatus to) {
         if (holdRepository.transition(hold.getId(), from, to) == 1) {
-            List<Long> seatIds = seatRepository.findIdsHeldBy(hold.getId());
-            seatRepository.releaseHeldBy(hold.getId());
+            List<Long> seatIds = seatInventory.findIdsHeldBy(hold.getId());
+            seatInventory.releaseHeldBy(hold.getId());
             reservationStrategy.release(hold, seatIds);
         }
     }

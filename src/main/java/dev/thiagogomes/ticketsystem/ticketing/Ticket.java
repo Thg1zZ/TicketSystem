@@ -43,10 +43,6 @@ public class Ticket {
         return id;
     }
 
-    public UUID getOrderId() {
-        return orderId;
-    }
-
     public Long getSeatId() {
         return seatId;
     }

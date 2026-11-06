@@ -1,8 +1,8 @@
 package dev.thiagogomes.ticketsystem.reservation.strategy;
 
 import dev.thiagogomes.ticketsystem.event.Seat;
-import dev.thiagogomes.ticketsystem.event.SeatRepository;
 import dev.thiagogomes.ticketsystem.reservation.SeatHold;
+import dev.thiagogomes.ticketsystem.reservation.SeatInventoryRepository;
 import dev.thiagogomes.ticketsystem.reservation.SeatsUnavailableException;
 
 import java.time.Instant;
@@ -14,19 +14,19 @@ import java.util.List;
  */
 class ConditionalUpdateSeatReservation implements SeatReservationStrategy {
 
-    private final SeatRepository seatRepository;
+    private final SeatInventoryRepository seatInventory;
 
-    ConditionalUpdateSeatReservation(SeatRepository seatRepository) {
-        this.seatRepository = seatRepository;
+    ConditionalUpdateSeatReservation(SeatInventoryRepository seatInventory) {
+        this.seatInventory = seatInventory;
     }
 
     @Override
     public List<Seat> reserve(Long eventId, List<Long> seatIds, SeatHold hold, Instant now) {
-        List<Seat> seats = seatRepository.findForEvent(eventId, seatIds);
+        List<Seat> seats = seatInventory.findForEvent(eventId, seatIds);
         SeatClaims.ensureAllFound(eventId, seatIds, seats);
         SeatClaims.ensureAvailable(seats, now);
 
-        int claimed = seatRepository.claimIfAvailable(seatIds, hold.getId(), hold.getExpiresAt(), now);
+        int claimed = seatInventory.claimIfAvailable(seatIds, hold.getId(), hold.getExpiresAt(), now);
         if (claimed != seatIds.size()) {
             // ponytail: reports every requested seat; pinpointing the lost one needs a re-read after rollback
             throw new SeatsUnavailableException(seatIds);

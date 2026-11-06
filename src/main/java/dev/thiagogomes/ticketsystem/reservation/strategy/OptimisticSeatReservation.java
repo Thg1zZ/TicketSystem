@@ -1,8 +1,8 @@
 package dev.thiagogomes.ticketsystem.reservation.strategy;
 
 import dev.thiagogomes.ticketsystem.event.Seat;
-import dev.thiagogomes.ticketsystem.event.SeatRepository;
 import dev.thiagogomes.ticketsystem.reservation.SeatHold;
+import dev.thiagogomes.ticketsystem.reservation.SeatInventoryRepository;
 import dev.thiagogomes.ticketsystem.reservation.SeatsUnavailableException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 
@@ -15,21 +15,21 @@ import java.util.List;
  */
 class OptimisticSeatReservation implements SeatReservationStrategy {
 
-    private final SeatRepository seatRepository;
+    private final SeatInventoryRepository seatInventory;
 
-    OptimisticSeatReservation(SeatRepository seatRepository) {
-        this.seatRepository = seatRepository;
+    OptimisticSeatReservation(SeatInventoryRepository seatInventory) {
+        this.seatInventory = seatInventory;
     }
 
     @Override
     public List<Seat> reserve(Long eventId, List<Long> seatIds, SeatHold hold, Instant now) {
-        List<Seat> seats = seatRepository.findForEvent(eventId, seatIds);
+        List<Seat> seats = seatInventory.findForEvent(eventId, seatIds);
         SeatClaims.ensureAllFound(eventId, seatIds, seats);
         SeatClaims.ensureAvailable(seats, now);
 
         seats.forEach(seat -> seat.hold(hold.getId(), hold.getExpiresAt()));
         try {
-            seatRepository.flush();
+            seatInventory.flush();
         } catch (ObjectOptimisticLockingFailureException lostRace) {
             throw new SeatsUnavailableException(lostRace.getIdentifier() instanceof Long seatId
                     ? List.of(seatId)
