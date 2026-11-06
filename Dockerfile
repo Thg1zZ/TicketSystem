@@ -13,4 +13,5 @@ RUN useradd --system --uid 1001 app
 USER app
 COPY --from=build /workspace/target/ticket-system-*.jar app.jar
 EXPOSE 8081
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-jar", "app.jar"]
+# Heap = 65% do limite do container: o resto fica para metaspace, code cache, pilhas e buffers
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=65", "-jar", "app.jar"]

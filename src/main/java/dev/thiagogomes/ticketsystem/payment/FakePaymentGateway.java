@@ -19,7 +19,8 @@ import java.util.concurrent.ThreadLocalRandom;
  * Simulated card processor with configurable latency and decline rate. Like real gateways (Stripe, Adyen),
  * it is idempotent: the same key always returns the first result and never charges twice.
  */
-// ponytail: in-memory, so charges are forgotten on restart; a real gateway keeps them on its side
+// ponytail: in-memory and per instance, so charges are forgotten on restart and a retry routed to another replica
+// can't see them; a real gateway deduplicates the key on its side
 @Component
 public class FakePaymentGateway {
 

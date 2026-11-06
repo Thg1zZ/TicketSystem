@@ -48,14 +48,19 @@ services:
       timeout: 5s
       retries: 10
 
+  # N réplicas sem porta publicada; o tráfego entra pelo nginx
   app:
     build: .
-    ports:
-      - "127.0.0.1:8081:8081"
+    deploy:
+      replicas: ${APP_REPLICAS:-3}
+    # Sem swap: estourar o limite vira OOM visível em vez de pausas de GC de segundos
+    mem_limit: ${APP_MEMORY:-1g}
+    memswap_limit: ${APP_MEMORY:-1g}
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tickets
       DB_USERNAME: ${DB_USERNAME:-ticket}
       DB_PASSWORD: ${DB_PASSWORD:-ticket}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-ticket}
@@ -76,6 +81,16 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+
+  nginx:
+    image: nginx:1.30.6-alpine@sha256:583b7f2fce1cdb8da5ad5c39ebd3c33b98b87d493190e548bdee1fa8c619c311
+    ports:
+      - "127.0.0.1:8081:8081"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - app
+    mem_limit: 128m
 
   # Observabilidade opcional: docker compose --profile observability up -d
   prometheus:
@@ -116,7 +131,7 @@ services:
     image: grafana/k6:2.3.0@sha256:2dd4756ec6e14e62778916e1eb850108e4b499304c02df56760fa0bdb0fba0b8
     profiles: ["loadtest"]
     environment:
-      BASE_URL: http://app:8081
+      BASE_URL: http://nginx:8081
       ADMIN_TOKEN: ${ADMIN_TOKEN:-local-admin-token}
       RESULT_NAME: ${RESULT_NAME:-local}
       USERS: ${USERS:-5000}

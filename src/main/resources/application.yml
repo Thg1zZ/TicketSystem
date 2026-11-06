@@ -12,6 +12,9 @@ spring:
     url: jdbc:postgresql://localhost:5433/tickets
     username: ${DB_USERNAME:ticket}
     password: ${DB_PASSWORD:ticket}
+    hikari:
+      # Rule with N instances: N x pool <= Postgres max_connections (100) - reserve for admin/migrations
+      maximum-pool-size: ${DB_POOL_SIZE:10}
   jpa:
     open-in-view: false
     hibernate:
