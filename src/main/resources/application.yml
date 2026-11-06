@@ -36,6 +36,13 @@ ticket:
   hold:
     ttl: PT10M
     cleanup-interval: PT30S
+  checkout:
+    pending-stale-after: PT2M
+    recovery-interval: PT1M
+  payment:
+    min-latency: PT0.05S
+    max-latency: PT0.3S
+    failure-rate: 0.1
 
 management:
   endpoints:
