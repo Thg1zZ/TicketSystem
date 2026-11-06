@@ -7,9 +7,6 @@ spring:
   threads:
     virtual:
       enabled: true
-  mvc:
-    problemdetails:
-      enabled: true
   datasource:
     url: jdbc:postgresql://localhost:5433/tickets
     username: ticket
@@ -18,6 +15,11 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 50
+        order_inserts: true
   data:
     redis:
       host: localhost
