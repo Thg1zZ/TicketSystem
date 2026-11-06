@@ -21,6 +21,7 @@ configuração, e compará-las com teste de carga (k6)** — com prova, via SQL,
 - [Estratégias de concorrência](#estratégias-de-concorrência)
 - [Resultados do teste de carga](#resultados-do-teste-de-carga)
 - [Como as garantias são asseguradas](#como-as-garantias-são-asseguradas)
+- [Segurança](#segurança)
 - [Decisões técnicas](#decisões-técnicas)
 - [API](#api)
 - [Como rodar](#como-rodar)
@@ -169,13 +170,30 @@ Latência e throughput da reserva (`POST /events/{id}/holds`), medidos pelo k6 �
 
 **Nunca cobrar duas vezes:**
 1. `UNIQUE(user_id, idempotency_key)` em `orders`: repetir o checkout devolve o mesmo pedido (`Idempotent-Replayed: true`);
-2. o gateway é chamado com o **id do pedido** como chave de idempotência — retries, requisições concorrentes e o
-   job de recuperação reaproveitam a mesma cobrança;
-3. se os assentos se perdem durante um pagamento lento, a cobrança é **estornada** e o pedido vira `PAYMENT_FAILED`.
+2. o gateway é chamado com o **id do pedido** como chave de idempotência — retries e requisições concorrentes
+   reaproveitam a mesma cobrança; o job de recuperação **só consulta** o gateway, nunca cria cobrança (pedido
+   abandonado antes de pagar é encerrado sem cobrar; pedido cobrado antes de uma queda é confirmado);
+3. se os assentos se perdem durante um pagamento lento, a cobrança é **estornada** e o pedido vira `PAYMENT_FAILED`
+   (estorno só existe para cobrança aprovada, e é idempotente).
 
 **Nunca perder o pós-venda:** o evento vai para a tabela `outbox_event` **na mesma transação** do pedido; um relay
 publica com *publisher confirms*. Entrega *at-least-once* → consumidores idempotentes
 (`UNIQUE(order_id, seat_id)` em `ticket` + `INSERT … ON CONFLICT DO NOTHING`).
+
+## Segurança
+
+Revisão guiada por OWASP Top 10 e OWASP API Security Top 10:
+
+| Risco | O que o projeto faz |
+|---|---|
+| Acesso a objeto de outro usuário (API1 / A01) | Pedidos, holds, ingressos e QR respondem **404** para quem não é o dono — nem a existência vaza. IDs públicos são UUID v4 aleatórios. |
+| Função administrativa exposta (API5) | `POST /events` exige `X-Admin-Token` (comparação em tempo constante; sem token configurado, a operação fica **desligada**). |
+| Consumo irrestrito de recursos (API4) | Corpo de requisição limitado a 64 KB (413), evento limitado a 10.000 assentos, hold limitado a 4 assentos. |
+| Injeção (A03) | Toda consulta é parametrizada (JPA, SQL nativo, JdbcTemplate, `KEYS/ARGV` no Lua). `X-User-Id` só aceita `[A-Za-z0-9_-]{1,64}` — sem markup nem sequências que forjem logs. |
+| Configuração insegura (A05) | Postgres, Redis, RabbitMQ e app escutam só em `127.0.0.1`; Redis exige senha; credenciais vêm do ambiente (`.env.example`); Actuator expõe só `health` (status, sem versões/disco); headers `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy` e `Cache-Control: no-store` (respostas carregam códigos de ingresso). |
+| Falhas de integridade de dados (A08) | Preço calculado no servidor (o cliente nunca envia valor); DTOs explícitos (sem *mass assignment*); código do ingresso com 144 bits de `SecureRandom`. |
+| Componentes vulneráveis / cadeia de suprimentos (A06/A08) | Dependabot (Maven, Actions, Docker), Actions fixadas por SHA, token do CI só leitura, imagens fixadas por digest, Maven Wrapper com SHA-256. |
+| Vazamento em erros (A05/A09) | Toda resposta de erro é ProblemDetail sem stack trace nem SQL; detalhes só no log. Container roda como usuário não-root. |
 
 ## Decisões técnicas
 
@@ -204,10 +222,11 @@ Documentação interativa: **http://localhost:8081/swagger-ui.html**
 
 | Método | Rota | Descrição |
 |---|---|---|
-| `POST` | `/events` | Cria evento com setores (preço por setor) e layout de assentos |
+| `POST` | `/events` | Cria evento com setores (preço por setor) e layout de assentos — exige `X-Admin-Token` |
 | `GET` | `/events/{id}` | Evento e setores |
 | `GET` | `/events/{id}/seats` | Mapa de assentos com disponibilidade atual |
 | `POST` | `/events/{id}/holds` | Reserva temporária de 1 a 4 assentos (10 min) |
+| `GET` | `/holds/{id}` | Consulta a reserva (status, prazo e assentos) |
 | `DELETE` | `/holds/{id}` | Libera a reserva |
 | `POST` | `/holds/{id}/checkout` | Paga a reserva (header `Idempotency-Key` obrigatório) |
 | `GET` | `/orders/{id}` | Consulta pedido |
@@ -215,7 +234,7 @@ Documentação interativa: **http://localhost:8081/swagger-ui.html**
 | `GET` | `/orders/{id}/tickets` | Ingressos emitidos (assíncrono) |
 | `GET` | `/tickets/{id}/qr` | QR code (PNG) do ingresso |
 
-Todas as rotas de usuário exigem o header `X-User-Id`.
+Todas as rotas de usuário exigem o header `X-User-Id` (`[A-Za-z0-9_-]{1,64}`). Vendas (hold e checkout) fecham quando o evento começa.
 
 ## Como rodar
 
@@ -225,11 +244,14 @@ Pré-requisitos: **Docker** (com Compose) e, para rodar fora do Docker, **Java 2
 docker compose up -d --build
 ```
 
+Sem `.env`, o compose usa credenciais de desenvolvimento (aceitáveis porque tudo escuta só em `127.0.0.1`).
+Para outros ambientes, copie [`.env.example`](.env.example) para `.env` e troque os valores.
+
 | Serviço | Endereço |
 |---|---|
 | API / Swagger | http://localhost:8081/swagger-ui.html |
 | Health | http://localhost:8081/actuator/health |
-| RabbitMQ (painel) | http://localhost:15673 (ticket / ticket) |
+| RabbitMQ (painel) | http://localhost:15673 (usuário/senha do `.env`; padrão ticket / ticket) |
 | PostgreSQL | localhost:5433 |
 | Redis | localhost:6380 |
 
@@ -238,8 +260,8 @@ As portas fogem das padrão (5432, 6379, 8080…) para conviver com outros proje
 Exemplo de compra:
 
 ```bash
-# 1. cria um evento com 2 fileiras x 5 assentos
-curl -s -X POST localhost:8081/events -H 'Content-Type: application/json' -d '{
+# 1. cria um evento com 2 fileiras x 5 assentos (token de admin: ADMIN_TOKEN do .env; padrão local-admin-token)
+curl -s -X POST localhost:8081/events -H 'X-Admin-Token: local-admin-token' -H 'Content-Type: application/json' -d '{
   "name":"Show","venue":"Arena","startsAt":"2030-01-01T20:00:00Z",
   "sectors":[{"name":"Pista","price":150,"rows":2,"seatsPerRow":5}]}'
 
@@ -266,7 +288,7 @@ STRATEGY=redis docker compose up -d app      # pessimistic | optimistic | condit
 Destaques:
 - `ReservationStrategyContract` — o mesmo contrato de concorrência roda contra as 4 estratégias;
 - `CheckoutConcurrencyTest` — 10 requisições simultâneas com a mesma `Idempotency-Key` → 1 pedido, 1 cobrança;
-- `CheckoutPaymentFailureTest` — recusa, assento perdido durante pagamento lento (estorno), timeout do gateway (503 → retry), pedido travado retomado pelo job;
+- `CheckoutPaymentFailureTest` — recusa, assento perdido durante pagamento lento (estorno), timeout do gateway (503 → retry), pedido abandonado encerrado sem cobrança, pedido cobrado antes de uma queda confirmado pelo job;
 - `PostSaleFlowTest` — checkout → outbox → RabbitMQ → ingressos + QR → e-mail; reentrega idempotente; mensagem venenosa na DLQ;
 - `OrderCancellationTest` — cancelamento, revenda, estorno único.
 
@@ -279,10 +301,13 @@ STRATEGIES="redis" USERS=2000 VUS=500 ./loadtest/run-all.sh
 
 ## Limitações conhecidas e próximos passos
 
-- **Autenticação:** `X-User-Id` é só um identificador de escopo, **não** autenticação. Produção: OAuth2/JWT (Spring Security resource server).
+- **Autenticação:** `X-User-Id` é só um identificador de escopo, **não** autenticação, e o `X-Admin-Token` é um segredo compartilhado, não um controle de acesso completo. Produção: OAuth2/JWT (Spring Security resource server) com papéis.
+- **Bots e cambistas:** sem rate limiting nem fila virtual, usuários falsos podem segurar assentos por 10 min sem pagar (OWASP API6). Próximo passo: rate limit por usuário/IP e sala de espera.
+- **DLQ sem ferramenta de reprocessamento:** mensagens mortas ficam visíveis no painel do RabbitMQ, mas o reenvio é manual.
 - **Gateway fake em memória:** esquece cobranças ao reiniciar; um gateway real guarda a idempotência do lado dele.
 - **Outbox sem retenção:** linhas publicadas não são apagadas (falta um job de limpeza).
 - **E-mail pode duplicar** em reentregas (at-least-once); resolveria com tabela de envios.
 - **Disponibilidade "em tempo real"** é por consulta; *push* (SSE/WebSocket) é evolução natural.
 - **Job de expiração** roda em todas as instâncias (inofensivo, UPDATEs condicionais); com muitas instâncias, ShedLock.
+- **Números de carga medidos antes da revisão de segurança;** um teste curto depois dela (1.000 usuários, estratégia `redis`) manteve 0 erros e a prova de integridade.
 - **Carga medida numa máquina só:** app, banco, Redis, RabbitMQ e k6 disputam a mesma CPU — os números valem para **comparar** estratégias, não como capacidade absoluta.
