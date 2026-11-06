@@ -24,5 +24,20 @@ jobs:
           java-version: '21'
           cache: maven
 
-      - name: Build e testes (Testcontainers usa o Docker do runner)
+      - name: Build, testes e portão de cobertura (Testcontainers usa o Docker do runner)
         run: chmod +x mvnw && ./mvnw -B verify
+
+      - name: Resumo da cobertura
+        if: always() && hashFiles('target/site/jacoco/jacoco.csv') != ''
+        run: |
+          awk -F, 'NR>1 {lm+=$8; lc+=$9; bm+=$6; bc+=$7}
+            END {printf "### Cobertura de testes\n| Linhas | Branches |\n|---|---|\n| %.1f%% | %.1f%% |\n",
+                 100*lc/(lm+lc), 100*bc/(bm+bc)}' target/site/jacoco/jacoco.csv >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Relatório de cobertura
+        if: always() && hashFiles('target/site/jacoco/index.html') != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: jacoco-report
+          path: target/site/jacoco/
+          retention-days: 14
