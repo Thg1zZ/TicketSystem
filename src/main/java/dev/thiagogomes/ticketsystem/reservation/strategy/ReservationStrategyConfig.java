@@ -6,6 +6,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
+import java.util.Locale;
+
 /**
  * One place decides the active strategy. An unknown value fails at startup with the list of valid ones
  * instead of a "no qualifying bean" error.
@@ -29,7 +31,7 @@ class ReservationStrategyConfig {
 
     private static Strategy parse(String configured) {
         try {
-            return Strategy.valueOf(configured.trim().toUpperCase());
+            return Strategy.valueOf(configured.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException unknown) {
             throw new IllegalStateException("Unknown %s '%s'; use one of: pessimistic, optimistic, conditional, redis"
                     .formatted(SeatReservationStrategy.PROPERTY, configured));

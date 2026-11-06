@@ -2,6 +2,8 @@ package dev.thiagogomes.ticketsystem.reservation.strategy;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Locale;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 
@@ -13,6 +15,17 @@ class ReservationStrategyConfigTest {
     void picksStrategyIgnoringCaseAndSpaces() {
         assertThat(config.seatReservationStrategy(" Redis ", null, null)).isInstanceOf(RedisSeatReservation.class);
         assertThat(config.seatReservationStrategy("conditional", null, null)).isInstanceOf(ConditionalUpdateSeatReservation.class);
+    }
+
+    @Test
+    void parsingDoesNotDependOnTheDefaultLocale() {
+        Locale original = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR")); // "redis".toUpperCase() would be "REDİS" here
+            assertThat(config.seatReservationStrategy("redis", null, null)).isInstanceOf(RedisSeatReservation.class);
+        } finally {
+            Locale.setDefault(original);
+        }
     }
 
     @Test
