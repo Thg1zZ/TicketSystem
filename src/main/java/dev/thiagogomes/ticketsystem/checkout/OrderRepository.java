@@ -1,7 +1,9 @@
 package dev.thiagogomes.ticketsystem.checkout;
 
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
@@ -19,6 +21,13 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
 
     @EntityGraph(attributePaths = "items")
     Optional<Order> findWithItemsByIdAndUserId(UUID id, String userId);
+
+    /**
+     * SELECT ... FOR UPDATE: serializes ticket issuance and cancellation of the same order.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select o from CustomerOrder o where o.id = :orderId")
+    Optional<Order> lockById(UUID orderId);
 
     /**
      * Conditional transition: among concurrent finalizers of the same order, exactly one gets 1.
