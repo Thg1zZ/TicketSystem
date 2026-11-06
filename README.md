@@ -12,6 +12,7 @@ O diferencial do projeto é **implementar quatro estratégias de controle de con
 configuração, e compará-las com teste de carga (k6)** — com prova, via SQL, de zero vendas duplicadas.
 
 > Java 21 · Spring Boot 4.1 · PostgreSQL 17 + Flyway · Redis 8 · RabbitMQ 4 · Testcontainers · k6 · Docker Compose
+> · 97 testes · 95% de cobertura de linhas · licença MIT
 
 ---
 
@@ -111,7 +112,8 @@ hold liberado pode ser reservado na hora.
 **Cenário** ([`loadtest/seat-rush.js`](loadtest/seat-rush.js)): **5.000 compradores distintos, 1.000 ao mesmo tempo,
 disputando 500 assentos** (1 setor, 20 fileiras × 25). Cada um quer 1 ou 2 assentos vizinhos sorteados; quem ganha o
 hold paga (gateway fake com 50–300 ms de latência e 10% de recusa). Antes de cada medição, banco, Redis e RabbitMQ
-são zerados e um aquecimento de 1.000 usuários roda num evento separado (descartado). Duas rodadas por estratégia.
+são zerados e um aquecimento de 1.000 usuários roda num evento separado (descartado). Duas rodadas por estratégia,
+medidas com o código final (depois da revisão de segurança).
 
 **Ambiente:** Windows 10 + Docker Desktop (VM com 12 CPUs e 8 GB) — app, PostgreSQL, Redis, RabbitMQ **e o próprio k6
 na mesma máquina**, com outro projeto rodando ao lado. Pool Hikari padrão (10 conexões), virtual threads ligadas.
@@ -121,43 +123,48 @@ Latência e throughput da reserva (`POST /events/{id}/holds`), medidos pelo k6 �
 
 | Estratégia | Duração | Throughput (holds/s) | p50 | p95 | p99 | Erros inesperados | Assentos vendidos 2× |
 |---|---|---|---|---|---|---|---|
-| `pessimistic` | 9,3 s / 6,3 s | 537 / 796 | 1.160 / 623 ms | 2.432 / 2.305 ms | 3.481 / 3.059 ms | **0%** | **0** |
-| `optimistic` | 10,3 s / 10,0 s | 485 / 500 | 1.287 / 1.292 ms | 2.701 / 2.900 ms | 3.868 / 4.422 ms | **0%** | **0** |
-| `conditional` | 7,4 s / 7,8 s | 672 / 644 | 918 / 979 ms | 1.839 / 2.057 ms | 3.008 / 3.351 ms | **0%** | **0** |
-| `redis` | **4,2 s / 3,6 s** | **1.191 / 1.382** | **12 / 12 ms** | 1.692 / 1.421 ms | 2.208 / 2.259 ms | **0%** | **0** |
+| `pessimistic` | 7,8 s / 12,8 s | 645 / 392 | 869 / 1.900 ms | 2.148 / 3.645 ms | 3.408 / 4.628 ms | **0%** | **0** |
+| `optimistic` | 9,8 s / 8,4 s | 512 / 593 | 1.204 / 1.045 ms | 2.425 / 2.235 ms | 3.725 / 3.141 ms | **0%** | **0** |
+| `conditional` | 16,2 s / 5,1 s | 308 / 975 | 1.822 / 571 ms | 5.187 / 1.258 ms | 7.103 / 1.994 ms | **0%** | **0** |
+| `redis` | **4,4 s / 5,7 s** | **1.140 / 879** | **10 / 4 ms** | 1.999 / 2.400 ms | 2.664 / 2.830 ms | **0%** | **0** |
 
 "Erro inesperado" = qualquer resposta fora das esperadas (201/409 no hold, 201/402 no checkout) ou timeout.
 
-**Prova de integridade** ([`loadtest/proof.sql`](loadtest/proof.sql) + métricas do gateway), rodada 2:
+**Prova de integridade** ([`loadtest/proof.sql`](loadtest/proof.sql) + métricas do gateway) — rodada 1 / rodada 2:
 
 | Checagem | pessimistic | optimistic | conditional | redis |
 |---|---|---|---|---|
-| Assento em mais de um item vendido | 0 | 0 | 0 | 0 |
-| Assento `SOLD` sem item vendido (ou o contrário) | 0 | 0 | 0 | 0 |
-| Pedidos duplicados para a mesma `Idempotency-Key` | 0 | 0 | 0 | 0 |
-| Ingressos válidos duplicados para o mesmo assento | 0 | 0 | 0 | 0 |
-| Cobranças aprovadas × pedidos confirmados | 679 = 679 | 702 = 702 | 674 = 674 | 631 = 631 |
-| Eventos do outbox não publicados | 0 | 0 | 0 | 0 |
-| Assentos vendidos na medição (de 500) | 488 | 493 | 489 | 455 |
+| Assento em mais de um item vendido | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+| Assento `SOLD` sem item vendido (ou o contrário) | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+| Pedidos duplicados para a mesma `Idempotency-Key` | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+| Ingressos válidos duplicados para o mesmo assento | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+| Cobranças aprovadas = pedidos confirmados | 676 = 676 / 682 = 682 | 672 = 672 / 680 = 680 | 677 = 677 / 666 = 666 | 634 = 634 / 658 = 658 |
+| Eventos do outbox não publicados | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+| Assentos vendidos na medição (de 500) | 490 / 482 | 487 / 489 | 491 / 488 | 458 / 456 |
+
+(As cobranças incluem as do aquecimento, que usa um evento separado; nenhuma precisou de estorno.)
 
 ### O que os números mostram
 
-1. **O gargalo não é o lock, é o pool de conexões.** Com 1.000 requisições simultâneas e 10 conexões, a latência
+1. **A integridade não depende da estratégia:** nas 8 medições, zero venda dupla, zero cobrança duplicada e
+   zero erro inesperado — o banco (UPDATE condicional + índice único parcial) é a última barreira em todas.
+2. **O gargalo não é o lock, é o pool de conexões.** Com 1.000 requisições simultâneas e 10 conexões, a latência
    das estratégias de banco é quase toda *fila por conexão*. Virtual threads aceitam as 1.000 requisições, mas não
    criam conexões.
-2. **O Redis só venceu depois de tirar os perdedores do banco.** Na primeira versão, o portão Lua rodava *dentro*
-   da transação: quem perdia já tinha gasto três idas ao Postgres, e o Redis empatou com as outras (≈800 holds/s,
-   p50 ≈ 800 ms). Com a rejeição antecipada (`MGET` antes de abrir a transação), os ~92% que perdem a disputa
-   recebem 409 sem pegar conexão: **p50 de 12 ms e cerca de 2× o throughput**. O Lua e o `UPDATE` condicional
-   continuam sendo o portão de verdade — o atalho é só um filtro.
-3. **Entre as estratégias de banco, a diferença é pequena perto do ruído desta máquina** (o pessimista variou
-   537 → 796 holds/s entre rodadas). Nas duas rodadas, o `conditional` ficou à frente do `optimistic`: um único
-   `UPDATE` faz "checar e gravar" sem ler a entidade antes, enquanto o otimista desperdiça leitura + escrita +
-   rollback quando perde.
-4. **O Redis vendeu menos assentos (455) sem vazar nenhum.** A medição terminou tão rápido que os assentos
-   devolvidos por pagamentos recusados voltaram quando quase todos os compradores já tinham sido atendidos.
-   Conferido: os 45 restantes estavam `AVAILABLE`, nenhum preso em `HELD`.
-5. **Próximos passos para a cauda (p95/p99):** dimensionar o pool / PgBouncer, rate limiting ou fila virtual
+3. **O Redis foi o único resultado estável:** maior throughput em todas as rodadas (inclusive nas medições
+   anteriores à revisão de segurança, 1.191 e 1.382 holds/s) e **p50 entre 4 e 12 ms**. O motivo é a rejeição
+   antecipada: os ~92% que perdem a disputa recebem 409 por um `MGET` no Redis, *antes* de abrir a transação, sem
+   pegar conexão. Na primeira versão, o portão Lua rodava dentro da transação e o Redis empatava com as outras
+   (≈800 holds/s, p50 ≈ 800 ms). O Lua e o `UPDATE` condicional continuam sendo o portão de verdade.
+4. **Entre as três estratégias de banco não há vencedor confiável nesta máquina:** rodadas idênticas variaram mais
+   do que as estratégias entre si (`conditional` foi de 308 a 975 holds/s; `pessimistic` de 645 a 392). Escolher
+   entre elas exigiria mais rodadas em hardware dedicado. Em teoria, o `conditional` faz menos trabalho (um único
+   `UPDATE` que checa e grava), o `optimistic` desperdiça leitura + escrita + rollback quando perde, e o
+   `pessimistic` segura a conexão enquanto espera o lock.
+5. **O Redis vendeu menos assentos (≈457) sem vazar nenhum.** A medição termina tão rápido que os assentos
+   devolvidos por pagamentos recusados voltam quando quase todos os compradores já foram atendidos. Conferido: os
+   restantes ficam `AVAILABLE`, nenhum preso em `HELD`.
+6. **Próximos passos para a cauda (p95/p99):** dimensionar o pool / PgBouncer, rate limiting ou fila virtual
    (sala de espera) antes da reserva.
 
 ## Como as garantias são asseguradas
@@ -285,6 +292,10 @@ STRATEGY=redis docker compose up -d app      # pessimistic | optimistic | condit
 ./mvnw verify      # unitários + integração (Testcontainers sobe Postgres, Redis e RabbitMQ reais)
 ```
 
+**97 testes, cobertura de 95% das linhas e 88% dos branches** (JaCoCo; relatório em `target/site/jacoco/index.html`).
+O build **falha** se a cobertura cair abaixo de 90% das linhas ou 80% dos branches; no CI, o resumo aparece na
+execução e o relatório completo fica como artefato.
+
 Destaques:
 - `ReservationStrategyContract` — o mesmo contrato de concorrência roda contra as 4 estratégias;
 - `CheckoutConcurrencyTest` — 10 requisições simultâneas com a mesma `Idempotency-Key` → 1 pedido, 1 cobrança;
@@ -309,5 +320,4 @@ STRATEGIES="redis" USERS=2000 VUS=500 ./loadtest/run-all.sh
 - **E-mail pode duplicar** em reentregas (at-least-once); resolveria com tabela de envios.
 - **Disponibilidade "em tempo real"** é por consulta; *push* (SSE/WebSocket) é evolução natural.
 - **Job de expiração** roda em todas as instâncias (inofensivo, UPDATEs condicionais); com muitas instâncias, ShedLock.
-- **Números de carga medidos antes da revisão de segurança;** um teste curto depois dela (1.000 usuários, estratégia `redis`) manteve 0 erros e a prova de integridade.
 - **Carga medida numa máquina só:** app, banco, Redis, RabbitMQ e k6 disputam a mesma CPU — os números valem para **comparar** estratégias, não como capacidade absoluta.
