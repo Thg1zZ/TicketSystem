@@ -5,7 +5,7 @@ name: ticket-system
 
 services:
   postgres:
-    image: postgres:17-alpine
+    image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
     environment:
       POSTGRES_DB: tickets
       POSTGRES_USER: ${DB_USERNAME:-ticket}
@@ -21,7 +21,7 @@ services:
       retries: 10
 
   redis:
-    image: redis:8-alpine
+    image: redis:8-alpine@sha256:71885d8cc6e42f2bc0aa2eb853bfc4be200b5108a46ac50e117ae1df0531fb80
     command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\""]
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-ticket}
@@ -35,7 +35,7 @@ services:
       retries: 10
 
   rabbitmq:
-    image: rabbitmq:4-management-alpine
+    image: rabbitmq:4-management-alpine@sha256:6cb708876a6163c93f1e5af03a649db13765027ff7a7d775c01a63b6a80545ee
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-ticket}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-ticket}
@@ -77,7 +77,7 @@ services:
 
   # Só roda com --profile loadtest e --no-deps, sem recriar o app (ver loadtest/run-all.sh)
   k6:
-    image: grafana/k6:2.2.0
+    image: grafana/k6:2.2.0@sha256:9bd01d6941fca969cb61bb57d2da5ee9b385fe2aa8881df3798c196564d6ace6
     profiles: ["loadtest"]
     environment:
       BASE_URL: http://app:8081
