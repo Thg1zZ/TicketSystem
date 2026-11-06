@@ -58,6 +58,24 @@ public class Seat {
         this.seatNumber = seatNumber;
     }
 
+    public boolean isAvailableAt(Instant now) {
+        return SeatStatus.effective(status, heldUntil, now) == SeatStatus.AVAILABLE;
+    }
+
+    public void hold(UUID holdId, Instant until) {
+        this.status = SeatStatus.HELD;
+        this.holdId = holdId;
+        this.heldUntil = until;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public Sector getSector() {
+        return sector;
+    }
+
     public String getRowLabel() {
         return rowLabel;
     }
@@ -68,5 +86,9 @@ public class Seat {
 
     public SeatStatus getStatus() {
         return status;
+    }
+
+    public UUID getHoldId() {
+        return holdId;
     }
 }

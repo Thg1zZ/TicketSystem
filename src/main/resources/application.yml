@@ -30,6 +30,11 @@ spring:
     username: ticket
     password: ticket
 
+ticket:
+  hold:
+    ttl: PT10M
+    cleanup-interval: PT30S
+
 management:
   endpoints:
     web:
