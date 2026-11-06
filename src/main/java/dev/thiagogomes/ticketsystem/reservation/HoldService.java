@@ -69,12 +69,38 @@ public class HoldService {
 
     @Transactional
     public void release(UUID holdId, String userId) {
-        SeatHold hold = holdRepository.findByIdAndUserId(holdId, userId)
-                .orElseThrow(() -> new NotFoundException("Hold %s not found".formatted(holdId)));
+        SeatHold hold = findOwned(holdId, userId);
         if (hold.getStatus() == HoldStatus.CONVERTED) {
             throw new ConflictException("Hold was already converted into an order");
         }
-        closeHold(hold, HoldStatus.RELEASED);
+        closeHold(hold, HoldStatus.ACTIVE, HoldStatus.RELEASED);
+    }
+
+    /**
+     * Locks the hold for checkout: once CONVERTED it can no longer be released by the user or expired by the job.
+     * The seats keep their own deadline, so a payment slower than the hold still loses them (checked at confirmation).
+     */
+    @Transactional
+    public SeatHold convertForCheckout(UUID holdId, String userId) {
+        SeatHold hold = findOwned(holdId, userId);
+        boolean converted = hold.isActiveAt(clock.instant())
+                && holdRepository.transition(holdId, HoldStatus.ACTIVE, HoldStatus.CONVERTED) == 1;
+        if (!converted) {
+            throw new ConflictException("Hold is not active: it expired, was released or was already checked out");
+        }
+        return hold;
+    }
+
+    @Transactional
+    public void releaseAfterFailedCheckout(UUID holdId) {
+        holdRepository.findById(holdId).ifPresent(hold -> closeHold(hold, HoldStatus.CONVERTED, HoldStatus.RELEASED));
+    }
+
+    /**
+     * Lets strategies with external state (Redis) free seats that left the hold by another path (cancellation).
+     */
+    public void forgetSeats(UUID holdId, List<Long> seatIds) {
+        holdRepository.findById(holdId).ifPresent(hold -> reservationStrategy.release(hold, seatIds));
     }
 
     /**
@@ -93,12 +119,17 @@ public class HoldService {
             if (previous.isActiveAt(now)) {
                 throw new ConflictException(ACTIVE_HOLD_MESSAGE, Map.of("holdId", previous.getId()));
             }
-            closeHold(previous, HoldStatus.EXPIRED);
+            closeHold(previous, HoldStatus.ACTIVE, HoldStatus.EXPIRED);
         });
     }
 
-    private void closeHold(SeatHold hold, HoldStatus finalStatus) {
-        if (holdRepository.transition(hold.getId(), HoldStatus.ACTIVE, finalStatus) == 1) {
+    private SeatHold findOwned(UUID holdId, String userId) {
+        return holdRepository.findByIdAndUserId(holdId, userId)
+                .orElseThrow(() -> new NotFoundException("Hold %s not found".formatted(holdId)));
+    }
+
+    private void closeHold(SeatHold hold, HoldStatus from, HoldStatus to) {
+        if (holdRepository.transition(hold.getId(), from, to) == 1) {
             List<Long> seatIds = seatRepository.findIdsHeldBy(hold.getId());
             seatRepository.releaseHeldBy(hold.getId());
             reservationStrategy.release(hold, seatIds);

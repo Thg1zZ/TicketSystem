@@ -60,6 +60,33 @@ public interface SeatRepository extends JpaRepository<Seat, Long> {
     @Query("select s.id from Seat s where s.holdId = :holdId and s.status = dev.thiagogomes.ticketsystem.event.SeatStatus.HELD")
     List<Long> findIdsHeldBy(UUID holdId);
 
+    @Query("""
+            select s from Seat s join fetch s.sector
+            where s.holdId = :holdId and s.status = dev.thiagogomes.ticketsystem.event.SeatStatus.HELD
+            order by s.id
+            """)
+    List<Seat> findHeldBy(UUID holdId);
+
+    /**
+     * Succeeds only for seats this hold still owns; a seat taken over after the hold deadline is not counted.
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+            update Seat s
+            set s.status = dev.thiagogomes.ticketsystem.event.SeatStatus.SOLD, s.heldUntil = null, s.version = s.version + 1
+            where s.holdId = :holdId and s.status = dev.thiagogomes.ticketsystem.event.SeatStatus.HELD
+            """)
+    int sellHeldBy(UUID holdId);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+            update Seat s
+            set s.status = dev.thiagogomes.ticketsystem.event.SeatStatus.AVAILABLE,
+                s.holdId = null, s.heldUntil = null, s.version = s.version + 1
+            where s.id in :seatIds and s.status = dev.thiagogomes.ticketsystem.event.SeatStatus.SOLD
+            """)
+    int releaseSold(Collection<Long> seatIds);
+
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""
             update Seat s

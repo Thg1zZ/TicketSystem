@@ -1,0 +1,53 @@
+package dev.thiagogomes.ticketsystem.checkout;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.util.UriComponentsBuilder;
+
+import java.util.UUID;
+
+import static dev.thiagogomes.ticketsystem.shared.RequestHeaders.IDEMPOTENCY_KEY;
+import static dev.thiagogomes.ticketsystem.shared.RequestHeaders.IDEMPOTENT_REPLAYED;
+import static dev.thiagogomes.ticketsystem.shared.RequestHeaders.USER_ID;
+
+@Tag(name = "Checkout")
+@RestController
+class CheckoutController {
+
+    private final CheckoutService checkoutService;
+    private final OrderService orderService;
+
+    CheckoutController(CheckoutService checkoutService, OrderService orderService) {
+        this.checkoutService = checkoutService;
+        this.orderService = orderService;
+    }
+
+    @Operation(summary = "Pay for a hold. Repeating the call with the same Idempotency-Key never charges twice")
+    @PostMapping("/holds/{holdId}/checkout")
+    ResponseEntity<OrderResponse> checkout(
+            @PathVariable UUID holdId,
+            @RequestHeader(USER_ID) @NotBlank @Size(max = 64) String userId,
+            @RequestHeader(IDEMPOTENCY_KEY) @Pattern(regexp = "[A-Za-z0-9_-]{8,100}") String idempotencyKey,
+            UriComponentsBuilder uriBuilder) {
+        CheckoutResult result = checkoutService.checkout(holdId, userId, idempotencyKey);
+        var location = uriBuilder.path("/orders/{id}").buildAndExpand(result.order().id()).toUri();
+        return ResponseEntity.created(location)
+                .header(IDEMPOTENT_REPLAYED, String.valueOf(result.replayed()))
+                .body(result.order());
+    }
+
+    @Operation(summary = "Get one of your orders")
+    @GetMapping("/orders/{orderId}")
+    OrderResponse get(@PathVariable UUID orderId, @RequestHeader(USER_ID) @NotBlank @Size(max = 64) String userId) {
+        return orderService.find(orderId, userId);
+    }
+}
