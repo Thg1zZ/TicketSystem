@@ -3,12 +3,14 @@ package dev.thiagogomes.ticketsystem.shared.error;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.MessageSourceResolvable;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -62,9 +64,16 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(ServiceUnavailableException.class)
     ResponseEntity<ProblemDetail> handleUnavailable(ServiceUnavailableException ex) {
         log.warn("Dependency unavailable: {}", ex.getMessage(), ex.getCause());
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .header(HttpHeaders.RETRY_AFTER, "5")
-                .body(problem(HttpStatus.SERVICE_UNAVAILABLE, "Service unavailable", ex.getMessage()));
+        return unavailable(ex.getMessage());
+    }
+
+    /**
+     * Database/Redis down or connection pool exhausted: a temporary condition, not a bug (503, not 500).
+     */
+    @ExceptionHandler({DataAccessResourceFailureException.class, CannotCreateTransactionException.class})
+    ResponseEntity<ProblemDetail> handleInfrastructureFailure(RuntimeException ex) {
+        log.warn("Infrastructure unavailable: {}", ex.getMessage());
+        return unavailable("A required service is temporarily unavailable; retry later");
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
@@ -111,6 +120,12 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         body.setDetail("Request has invalid fields");
         body.setProperty("errors", errors);
         return body;
+    }
+
+    private static ResponseEntity<ProblemDetail> unavailable(String detail) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .header(HttpHeaders.RETRY_AFTER, "5")
+                .body(problem(HttpStatus.SERVICE_UNAVAILABLE, "Service unavailable", detail));
     }
 
     private static ProblemDetail problem(HttpStatus status, String title, String detail) {
