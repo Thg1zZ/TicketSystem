@@ -14,7 +14,11 @@ import java.lang.annotation.Target;
  */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
-@SpringBootTest
+@SpringBootTest(properties = {
+        "ticket.payment.min-latency=0s",
+        "ticket.payment.max-latency=0s",
+        "ticket.payment.failure-rate=0"
+})
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
 public @interface IntegrationTest {
