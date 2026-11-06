@@ -33,8 +33,18 @@ class TicketSystemApplicationTests {
     }
 
     @Test
+    void probesAreServedOnTheMainPort() throws Exception {
+        mockMvc.perform(get("/livez")).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("UP"));
+        mockMvc.perform(get("/readyz"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.components.db.status").value("UP"))
+                .andExpect(jsonPath("$.components.redis").doesNotExist());
+    }
+
+    @Test
     void metricsAreNotExposedByDefault() throws Exception {
         mockMvc.perform(get("/actuator/metrics")).andExpect(status().isNotFound());
+        mockMvc.perform(get("/actuator/prometheus")).andExpect(status().isNotFound());
     }
 
     @Test

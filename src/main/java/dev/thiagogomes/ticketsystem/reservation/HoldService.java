@@ -7,6 +7,7 @@ import dev.thiagogomes.ticketsystem.reservation.strategy.SeatReservationStrategy
 import dev.thiagogomes.ticketsystem.shared.error.BusinessRuleException;
 import dev.thiagogomes.ticketsystem.shared.error.ConflictException;
 import dev.thiagogomes.ticketsystem.shared.error.NotFoundException;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -36,6 +37,7 @@ public class HoldService {
     private final TransactionTemplate transaction;
     private final Clock clock;
     private final Duration holdTtl;
+    private final MeterRegistry meters;
 
     public HoldService(SeatHoldRepository holdRepository,
                        SeatInventoryRepository seatInventory,
@@ -43,7 +45,9 @@ public class HoldService {
                        SeatReservationStrategy reservationStrategy,
                        TransactionTemplate transaction,
                        Clock clock,
-                       @Value("${ticket.hold.ttl}") Duration holdTtl) {
+                       @Value("${ticket.hold.ttl}") Duration holdTtl,
+                       MeterRegistry meters) {
+        this.meters = meters;
         this.transaction = transaction;
         this.holdRepository = holdRepository;
         this.seatInventory = seatInventory;
@@ -62,8 +66,24 @@ public class HoldService {
         if (new HashSet<>(seatIds).size() != seatIds.size()) {
             throw new BusinessRuleException("Seat ids must not repeat");
         }
-        reservationStrategy.rejectIfKnownTaken(eventId, seatIds, clock.instant());
-        return transaction.execute(status -> createInTransaction(eventId, userId, seatIds));
+        try {
+            reservationStrategy.rejectIfKnownTaken(eventId, seatIds, clock.instant());
+        } catch (SeatsUnavailableException taken) {
+            countHold("rejected_early");
+            throw taken;
+        }
+        try {
+            HoldResponse hold = transaction.execute(status -> createInTransaction(eventId, userId, seatIds));
+            countHold("created");
+            return hold;
+        } catch (SeatsUnavailableException taken) {
+            countHold("seat_taken");
+            throw taken;
+        }
+    }
+
+    private void countHold(String outcome) {
+        meters.counter("holds", "outcome", outcome).increment();
     }
 
     private HoldResponse createInTransaction(Long eventId, String userId, List<Long> seatIds) {

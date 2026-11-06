@@ -6,6 +6,7 @@ import dev.thiagogomes.ticketsystem.checkout.OrderRepository;
 import dev.thiagogomes.ticketsystem.checkout.OrderStatus;
 import dev.thiagogomes.ticketsystem.messaging.Messaging;
 import dev.thiagogomes.ticketsystem.messaging.Outbox;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -25,8 +26,11 @@ public class TicketIssuanceService {
     private final OrderRepository orderRepository;
     private final TicketRepository ticketRepository;
     private final Outbox outbox;
+    private final MeterRegistry meters;
 
-    public TicketIssuanceService(OrderRepository orderRepository, TicketRepository ticketRepository, Outbox outbox) {
+    public TicketIssuanceService(OrderRepository orderRepository, TicketRepository ticketRepository, Outbox outbox,
+                                 MeterRegistry meters) {
+        this.meters = meters;
         this.orderRepository = orderRepository;
         this.ticketRepository = ticketRepository;
         this.outbox = outbox;
@@ -52,6 +56,7 @@ public class TicketIssuanceService {
             }
         }
         if (issued > 0) {
+            meters.counter("tickets.issued").increment(issued);
             outbox.append(Messaging.TICKETS_ISSUED, orderId, new TicketsIssuedEvent(orderId, order.getUserId(), issued));
         }
         return issued;

@@ -1,5 +1,7 @@
 package dev.thiagogomes.ticketsystem.messaging;
 
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.AmqpException;
@@ -32,9 +34,15 @@ class OutboxRelay {
     private final JdbcTemplate jdbc;
     private final RabbitTemplate rabbit;
 
-    OutboxRelay(JdbcTemplate jdbc, RabbitTemplate rabbit) {
+    OutboxRelay(JdbcTemplate jdbc, RabbitTemplate rabbit, MeterRegistry meters) {
         this.jdbc = jdbc;
         this.rabbit = rabbit;
+        // Evaluated on each scrape; ix_outbox_unpublished keeps it cheap. A growing value means the broker is behind.
+        Gauge.builder("outbox.pending", this::countPending).register(meters);
+    }
+
+    private long countPending() {
+        return jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE published_at IS NULL", Long.class);
     }
 
     /**

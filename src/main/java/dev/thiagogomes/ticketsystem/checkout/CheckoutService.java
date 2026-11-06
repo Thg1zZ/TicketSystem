@@ -12,6 +12,7 @@ import dev.thiagogomes.ticketsystem.shared.error.BusinessRuleException;
 import dev.thiagogomes.ticketsystem.shared.error.ConflictException;
 import dev.thiagogomes.ticketsystem.shared.error.PaymentRequiredException;
 import dev.thiagogomes.ticketsystem.shared.error.ServiceUnavailableException;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -50,6 +51,7 @@ public class CheckoutService {
     private final Outbox outbox;
     private final TransactionTemplate transaction;
     private final Clock clock;
+    private final MeterRegistry meters;
 
     public CheckoutService(OrderRepository orderRepository,
                            OrderItemRepository orderItemRepository,
@@ -58,7 +60,9 @@ public class CheckoutService {
                            FakePaymentGateway paymentGateway,
                            Outbox outbox,
                            TransactionTemplate transaction,
-                           Clock clock) {
+                           Clock clock,
+                           MeterRegistry meters) {
+        this.meters = meters;
         this.outbox = outbox;
         this.orderRepository = orderRepository;
         this.orderItemRepository = orderItemRepository;
@@ -72,6 +76,7 @@ public class CheckoutService {
     public CheckoutResult checkout(UUID holdId, String userId, String idempotencyKey) {
         Order order = placeOrResume(holdId, userId, idempotencyKey);
         if (order.isSettled()) {
+            countCheckout("replayed");
             return result(order.getId(), true, DECLINED_REPLAY);
         }
         String failureReason = settle(order, charge(order));
@@ -134,10 +139,12 @@ public class CheckoutService {
     private String settle(Order order, PaymentResult payment) {
         if (!payment.approved()) {
             markFailed(order);
+            countCheckout("declined");
             return payment.declineReason();
         }
         try {
             if (Boolean.TRUE.equals(transaction.execute(status -> confirm(order, payment.reference())))) {
+                countCheckout("confirmed");
                 return null;
             }
         } catch (SeatsLostException | DataIntegrityViolationException lost) {
@@ -146,7 +153,12 @@ public class CheckoutService {
         // Approved but not confirmed: the money has to go back (refunds are idempotent)
         paymentGateway.refund(order.paymentKey());
         markFailed(order);
+        countCheckout("seats_lost");
         return SEATS_LOST;
+    }
+
+    private void countCheckout(String outcome) {
+        meters.counter("checkout", "outcome", outcome).increment();
     }
 
     /**

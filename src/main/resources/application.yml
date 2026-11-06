@@ -66,6 +66,8 @@ ticket:
   notification:
     failure-rate: 0
 
+# No compose o Actuator vai para a porta interna 8082 (MANAGEMENT_SERVER_PORT) com prometheus/metrics;
+# na porta pública ficam só /livez e /readyz
 management:
   endpoints:
     web:
@@ -75,6 +77,22 @@ management:
     health:
       show-components: always # UP/DOWN of db, redis, rabbit...
       show-details: never     # ...but no versions, disk paths or other internals
+      probes:
+        enabled: true
+        add-additional-paths: true # /livez and /readyz on the main port, even when management moves away
+      group:
+        readiness:
+          include: readinessState,db # Redis and RabbitMQ outages degrade features, they don't make us unready
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true # buckets let Prometheus compute p95/p99 across instances
+      minimum-expected-value:
+        http.server.requests: 5ms
+      maximum-expected-value:
+        http.server.requests: 30s # above the ceiling everything lands in +Inf, so keep it past the worst tail seen
 
 springdoc:
   swagger-ui:
