@@ -11,23 +11,24 @@ mkdir -p loadtest/results
 
 wait_for_app() {
   for _ in $(seq 1 60); do
-    curl -sf http://localhost:8081/actuator/health >/dev/null && return 0
+    curl -sf http://localhost:8081/readyz >/dev/null && return 0
     sleep 2
   done
-  echo "app did not become healthy" >&2
+  echo "app did not become ready" >&2
   exit 1
 }
 
+# Soma o contador de todas as instâncias, lido na porta interna de gestão (8082, não publicada no host)
 payments() {
-  local value
-  value=$(curl -s "http://localhost:8081/actuator/metrics/payments?tag=outcome:$1" | sed -n 's/.*"value":\([0-9.]*\).*/\1/p')
-  echo "${value:-0}"
+  for container in $(docker compose ps -q app); do
+    docker exec "$container" curl -s http://localhost:8082/actuator/prometheus
+  done | awk -v outcome="outcome=\"$1\"" '/^payments_total\{/ && index($0, outcome) { sum += $NF } END { printf "%d\n", sum }'
 }
 
 for strategy in $STRATEGIES; do
   echo "=================== $strategy ==================="
   docker compose down -v --remove-orphans >/dev/null 2>&1
-  STRATEGY=$strategy ACTUATOR_EXPOSURE=health,info,metrics docker compose up -d --build >/dev/null 2>&1
+  STRATEGY=$strategy docker compose up -d --build >/dev/null 2>&1
   wait_for_app
   docker compose logs app | grep -o "Seat reservation strategy: .*"
 

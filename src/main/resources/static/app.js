@@ -552,7 +552,7 @@ function renderOrder() {
 async function checkHealth() {
     const health = $('health');
     try {
-        const { data } = await api('GET', '/actuator/health', { asUser: false, log: false });
+        const { data } = await api('GET', '/readyz', { asUser: false, log: false });
         health.dataset.state = data.status === 'UP' ? 'up' : 'down';
         $('health-text').textContent = data.status === 'UP' ? 'API online' : `API ${data.status}`;
     } catch {
