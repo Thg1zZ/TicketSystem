@@ -17,7 +17,9 @@ import java.lang.annotation.Target;
 @SpringBootTest(properties = {
         "ticket.payment.min-latency=0s",
         "ticket.payment.max-latency=0s",
-        "ticket.payment.failure-rate=0"
+        "ticket.payment.failure-rate=0",
+        "ticket.outbox.relay-interval=PT0.1S",
+        "spring.rabbitmq.listener.simple.retry.initial-interval=50ms"
 })
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
