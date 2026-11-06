@@ -138,7 +138,7 @@ services:
       VUS: ${VUS:-1000}
     volumes:
       - ./loadtest:/scripts
-    command: ["run", "--quiet", "/scripts/seat-rush.js"]
+    command: ["run", "--quiet", "/scripts/${K6_SCRIPT:-seat-rush.js}"]
 
 volumes:
   pgdata:
