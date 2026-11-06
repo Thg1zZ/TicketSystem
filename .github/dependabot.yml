@@ -13,12 +13,20 @@ updates:
     schedule:
       interval: weekly
 
+  # Images get patch/minor updates only: a major (Java 21 -> 25, Postgres 17 -> 18 with a new data format)
+  # changes the project's requirements and is a deliberate decision, not an automatic PR.
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: docker-compose
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
