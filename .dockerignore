@@ -1,0 +1,7 @@
+target/
+.idea/
+.vscode/
+.claude/
+.git/
+*.md
+loadtest/
