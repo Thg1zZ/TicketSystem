@@ -1,6 +1,7 @@
 server:
   port: 8081
 
+# Credenciais vêm de variáveis de ambiente; os padrões existem só para rodar localmente (ver .env.example)
 spring:
   application:
     name: ticket-system
@@ -9,8 +10,8 @@ spring:
       enabled: true
   datasource:
     url: jdbc:postgresql://localhost:5433/tickets
-    username: ticket
-    password: ticket
+    username: ${DB_USERNAME:ticket}
+    password: ${DB_PASSWORD:ticket}
   jpa:
     open-in-view: false
     hibernate:
@@ -24,12 +25,16 @@ spring:
     redis:
       host: localhost
       port: 6380
+      password: ${REDIS_PASSWORD:ticket}
   rabbitmq:
     host: localhost
     port: 5673
-    username: ticket
-    password: ticket
+    username: ${RABBITMQ_USERNAME:ticket}
+    password: ${RABBITMQ_PASSWORD:ticket}
     publisher-confirm-type: simple
+    publisher-returns: true
+    template:
+      mandatory: true # unroutable messages come back to the returns callback instead of vanishing
     listener:
       simple:
         default-requeue-rejected: false # retries exhausted -> dead-letter queue, never an infinite requeue loop
@@ -40,8 +45,12 @@ spring:
           multiplier: 2
 
 ticket:
+  admin:
+    token: ${ADMIN_TOKEN:} # empty = admin operations (creating events) disabled
+  http:
+    max-request-body: 64KB
   reservation:
-    strategy: pessimistic # pessimistic | optimistic | redis | conditional
+    strategy: pessimistic # pessimistic | optimistic | conditional | redis
   hold:
     ttl: PT10M
     cleanup-interval: PT30S
@@ -61,10 +70,11 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info
   endpoint:
     health:
-      show-details: always
+      show-components: always # UP/DOWN of db, redis, rabbit...
+      show-details: never     # ...but no versions, disk paths or other internals
 
 springdoc:
   swagger-ui:

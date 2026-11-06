@@ -27,7 +27,7 @@ payments() {
 for strategy in $STRATEGIES; do
   echo "=================== $strategy ==================="
   docker compose down -v --remove-orphans >/dev/null 2>&1
-  STRATEGY=$strategy docker compose up -d --build >/dev/null 2>&1
+  STRATEGY=$strategy ACTUATOR_EXPOSURE=health,info,metrics docker compose up -d --build >/dev/null 2>&1
   wait_for_app
   docker compose logs app | grep -o "Seat reservation strategy: .*"
 

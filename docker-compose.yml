@@ -1,26 +1,33 @@
 name: ticket-system
 
+# Credenciais vêm do ambiente (ou de um .env, ver .env.example). Os padrões abaixo são só de desenvolvimento:
+# todas as portas escutam apenas em 127.0.0.1, então não ficam acessíveis pela rede.
+
 services:
   postgres:
     image: postgres:17-alpine
     environment:
       POSTGRES_DB: tickets
-      POSTGRES_USER: ticket
-      POSTGRES_PASSWORD: ticket
+      POSTGRES_USER: ${DB_USERNAME:-ticket}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ticket}
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ticket -d tickets"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d tickets"]
       interval: 5s
       timeout: 3s
       retries: 10
 
   redis:
     image: redis:8-alpine
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\""]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-ticket}
+      REDISCLI_AUTH: ${REDIS_PASSWORD:-ticket}
     ports:
-      - "6380:6379"
+      - "127.0.0.1:6380:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -30,11 +37,11 @@ services:
   rabbitmq:
     image: rabbitmq:4-management-alpine
     environment:
-      RABBITMQ_DEFAULT_USER: ticket
-      RABBITMQ_DEFAULT_PASS: ticket
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-ticket}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-ticket}
     ports:
-      - "5673:5672"
-      - "15673:15672"
+      - "127.0.0.1:5673:5672"
+      - "127.0.0.1:15673:15672"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
@@ -44,14 +51,22 @@ services:
   app:
     build: .
     ports:
-      - "8081:8081"
+      - "127.0.0.1:8081:8081"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tickets
+      DB_USERNAME: ${DB_USERNAME:-ticket}
+      DB_PASSWORD: ${DB_PASSWORD:-ticket}
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-ticket}
       SPRING_RABBITMQ_HOST: rabbitmq
       SPRING_RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-ticket}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-ticket}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-local-admin-token}
       TICKET_RESERVATION_STRATEGY: ${STRATEGY:-pessimistic}
+      # metrics só é exposto quando pedido (o teste de carga usa para provar as cobranças)
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: ${ACTUATOR_EXPOSURE:-health,info}
     depends_on:
       postgres:
         condition: service_healthy
@@ -66,6 +81,7 @@ services:
     profiles: ["loadtest"]
     environment:
       BASE_URL: http://app:8081
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-local-admin-token}
       RESULT_NAME: ${RESULT_NAME:-local}
       USERS: ${USERS:-5000}
       VUS: ${VUS:-1000}
