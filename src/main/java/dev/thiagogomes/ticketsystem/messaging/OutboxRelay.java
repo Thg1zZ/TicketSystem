@@ -1,5 +1,8 @@
 package dev.thiagogomes.ticketsystem.messaging;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.amqp.AmqpException;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageBuilder;
 import org.springframework.amqp.core.MessageDeliveryMode;
@@ -22,6 +25,7 @@ import java.util.UUID;
 @Component
 class OutboxRelay {
 
+    private static final Logger log = LoggerFactory.getLogger(OutboxRelay.class);
     private static final int BATCH_SIZE = 100;
     private static final long CONFIRM_TIMEOUT_MS = 5_000;
 
@@ -52,11 +56,17 @@ class OutboxRelay {
             return;
         }
 
-        rabbit.invoke(channel -> {
-            pending.forEach(event -> channel.send(Messaging.EXCHANGE, event.type(), toMessage(event)));
-            channel.waitForConfirmsOrDie(CONFIRM_TIMEOUT_MS);
-            return null;
-        });
+        try {
+            rabbit.invoke(channel -> {
+                pending.forEach(event -> channel.send(Messaging.EXCHANGE, event.type(), toMessage(event)));
+                channel.waitForConfirmsOrDie(CONFIRM_TIMEOUT_MS);
+                return null;
+            });
+        } catch (AmqpException brokerUnavailable) {
+            // Rows stay pending and the next run retries; one line instead of a stack trace every half second
+            log.warn("Outbox relay paused, {} events pending: {}", pending.size(), brokerUnavailable.getMessage());
+            return;
+        }
 
         jdbc.batchUpdate("UPDATE outbox_event SET published_at = now() WHERE id = ?",
                 pending.stream().map(event -> new Object[]{event.id()}).toList());

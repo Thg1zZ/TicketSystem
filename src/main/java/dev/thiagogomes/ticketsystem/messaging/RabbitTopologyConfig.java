@@ -1,5 +1,7 @@
 package dev.thiagogomes.ticketsystem.messaging;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.Declarable;
@@ -10,6 +12,7 @@ import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.core.TopicExchange;
 import org.springframework.amqp.support.converter.JacksonJsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
+import org.springframework.boot.amqp.autoconfigure.RabbitTemplateCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -33,6 +36,8 @@ import static dev.thiagogomes.ticketsystem.messaging.Messaging.deadLetterQueue;
 @Configuration(proxyBeanMethods = false)
 class RabbitTopologyConfig {
 
+    private static final Logger log = LoggerFactory.getLogger(RabbitTopologyConfig.class);
+
     @Bean
     Declarables ticketTopology() {
         TopicExchange events = new TopicExchange(EXCHANGE);
@@ -51,6 +56,18 @@ class RabbitTopologyConfig {
     @Bean
     MessageConverter jsonMessageConverter() {
         return new JacksonJsonMessageConverter();
+    }
+
+    /**
+     * With mandatory=true the broker hands back messages no queue accepted; they must not vanish silently.
+     * The outbox row keeps the payload, so the event can be replayed after fixing the topology.
+     */
+    @Bean
+    RabbitTemplateCustomizer unroutableMessageAlarm() {
+        return template -> template.setReturnsCallback(returned -> log.error(
+                "Unroutable message {} (exchange={}, routingKey={}): {}",
+                returned.getMessage().getMessageProperties().getMessageId(),
+                returned.getExchange(), returned.getRoutingKey(), returned.getReplyText()));
     }
 
     private static List<Declarable> queueWithDeadLetter(String name, String routingKey,
