@@ -47,6 +47,21 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return problem;
     }
 
+    @ExceptionHandler(PaymentRequiredException.class)
+    ProblemDetail handlePaymentRequired(PaymentRequiredException ex) {
+        ProblemDetail problem = problem(HttpStatus.PAYMENT_REQUIRED, "Payment not approved", ex.getMessage());
+        ex.details().forEach(problem::setProperty);
+        return problem;
+    }
+
+    @ExceptionHandler(ServiceUnavailableException.class)
+    ResponseEntity<ProblemDetail> handleUnavailable(ServiceUnavailableException ex) {
+        log.warn("Dependency unavailable: {}", ex.getMessage(), ex.getCause());
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .header(HttpHeaders.RETRY_AFTER, "5")
+                .body(problem(HttpStatus.SERVICE_UNAVAILABLE, "Service unavailable", ex.getMessage()));
+    }
+
     @ExceptionHandler(DataIntegrityViolationException.class)
     ProblemDetail handleDataIntegrity(DataIntegrityViolationException ex) {
         log.warn("Data integrity violation: {}", ex.getMostSpecificCause().getMessage());
