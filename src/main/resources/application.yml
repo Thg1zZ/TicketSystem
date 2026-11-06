@@ -66,6 +66,12 @@ ticket:
     failure-rate: 0.1
   outbox:
     relay-interval: PT0.5S
+  seat-map:
+    cache-ttl: PT0.5S          # readers may see a map up to this old; the database sees one load per TTL
+    push-interval: PT0.5S      # how often each instance checks watched maps for changes (SSE)
+    heartbeat-interval: PT15S
+    stream-timeout: PT30M      # EventSource reconnects by itself after this
+    max-streams: 2000          # per instance; above it clients get 503 and fall back to polling
   notification:
     failure-rate: 0
 

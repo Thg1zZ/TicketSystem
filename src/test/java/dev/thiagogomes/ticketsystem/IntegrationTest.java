@@ -20,6 +20,9 @@ import java.lang.annotation.Target;
         "ticket.payment.failure-rate=0",
         "ticket.admin.token=" + IntegrationTest.ADMIN_TOKEN,
         "ticket.outbox.relay-interval=PT0.1S",
+        // Readers right after a write must see it; concurrent reads are still coalesced (single-flight)
+        "ticket.seat-map.cache-ttl=0s",
+        "ticket.seat-map.push-interval=PT0.1S",
         "spring.rabbitmq.listener.simple.retry.initial-interval=50ms"
 })
 @AutoConfigureMockMvc
