@@ -27,7 +27,9 @@ class CheckoutController {
         this.checkoutService = checkoutService;
     }
 
-    @Operation(summary = "Pay for a hold. Repeating the call with the same Idempotency-Key never charges twice")
+    @Operation(summary = "Pay for a hold. Repeating the call with the same Idempotency-Key never charges twice",
+            description = "201 confirmed (Idempotent-Replayed tells whether it is a stored result); 402 payment declined; "
+                    + "503 + Retry-After when the payment outcome is unknown: retry with the same Idempotency-Key")
     @PostMapping("/holds/{holdId}/checkout")
     ResponseEntity<OrderResponse> checkout(
             @PathVariable UUID holdId,

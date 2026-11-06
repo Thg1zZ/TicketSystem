@@ -60,6 +60,8 @@ class TicketSystemApplicationTests {
     void openApiDocsAreExposed() throws Exception {
         mockMvc.perform(get("/v3/api-docs"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.info.title").value("Ticket System API"));
+                .andExpect(jsonPath("$.info.title").value("Ticket System API"))
+                .andExpect(jsonPath("$.paths['/holds/{holdId}/checkout'].post.responses['409']").exists())
+                .andExpect(jsonPath("$.components.schemas.Problem").exists());
     }
 }

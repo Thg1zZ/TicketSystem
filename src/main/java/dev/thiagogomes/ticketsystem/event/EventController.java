@@ -29,7 +29,8 @@ class EventController {
         this.adminTokenGuard = adminTokenGuard;
     }
 
-    @Operation(summary = "Create an event with sectors and a numbered seat layout (admin only, up to 10,000 seats)")
+    @Operation(summary = "Create an event with sectors and a numbered seat layout (admin only, up to 10,000 seats)",
+            description = "Requires X-Admin-Token; 401 when it is missing or wrong")
     @PostMapping
     ResponseEntity<EventResponse> create(@RequestHeader(value = ADMIN_TOKEN, required = false) String adminToken,
                                          @Valid @RequestBody CreateEventRequest request,
