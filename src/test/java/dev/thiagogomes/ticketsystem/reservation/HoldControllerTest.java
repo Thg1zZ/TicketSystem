@@ -75,6 +75,20 @@ class HoldControllerTest {
     }
 
     @Test
+    void createdHoldIsReadableByItsOwnerOnly() throws Exception {
+        String location = hold("alice", seat(0), seat(1))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getHeader("Location");
+
+        mockMvc.perform(get(location).header("X-User-Id", "alice"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.seats", hasSize(2)));
+        mockMvc.perform(get(location).header("X-User-Id", "bob"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void takenSeatReturnsConflictListingUnavailableSeats() throws Exception {
         hold("alice", seat(0)).andExpect(status().isCreated());
 

@@ -5,13 +5,16 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.UUID;
 
@@ -29,11 +32,19 @@ class HoldController {
 
     @Operation(summary = "Temporarily hold up to 4 seats for 10 minutes")
     @PostMapping("/events/{eventId}/holds")
-    @ResponseStatus(HttpStatus.CREATED)
-    HoldResponse create(@PathVariable Long eventId,
-                        @RequestHeader(USER_ID) @ValidUserId String userId,
-                        @Valid @RequestBody CreateHoldRequest request) {
-        return holdService.create(eventId, userId, request.seatIds());
+    ResponseEntity<HoldResponse> create(@PathVariable Long eventId,
+                                        @RequestHeader(USER_ID) @ValidUserId String userId,
+                                        @Valid @RequestBody CreateHoldRequest request,
+                                        UriComponentsBuilder uriBuilder) {
+        HoldResponse hold = holdService.create(eventId, userId, request.seatIds());
+        var location = uriBuilder.path("/holds/{id}").buildAndExpand(hold.id()).toUri();
+        return ResponseEntity.created(location).body(hold);
+    }
+
+    @Operation(summary = "Get one of your holds (status, deadline and the seats it still owns)")
+    @GetMapping("/holds/{holdId}")
+    HoldResponse get(@PathVariable UUID holdId, @RequestHeader(USER_ID) @ValidUserId String userId) {
+        return holdService.find(holdId, userId);
     }
 
     @Operation(summary = "Release a hold, making its seats available again")
