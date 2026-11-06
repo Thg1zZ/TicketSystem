@@ -21,6 +21,13 @@ public interface SeatReservationStrategy {
     List<Seat> reserve(Long eventId, List<Long> seatIds, SeatHold hold, Instant now);
 
     /**
+     * Optional fast path, called BEFORE any database transaction: reject requests already known to lose.
+     * Only an optimization — a seat passing here can still be refused by {@link #reserve}.
+     */
+    default void rejectIfKnownTaken(Long eventId, List<Long> seatIds, Instant now) {
+    }
+
+    /**
      * Called when a hold ends before expiring (released or replaced). Only strategies with state outside
      * the database need it.
      */

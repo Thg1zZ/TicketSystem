@@ -11,6 +11,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -53,6 +54,28 @@ class RedisSeatReservation implements SeatReservationStrategy {
         return seats;
     }
 
+    /**
+     * One MGET, no lock, no database: during a rush this answers most losers. Not atomic, hence only a filter;
+     * the Lua claim inside {@link #reserve} is still the real gate.
+     */
+    @Override
+    public void rejectIfKnownTaken(Long eventId, List<Long> seatIds, Instant now) {
+        List<String> claims = redis.opsForValue().multiGet(keys(eventId, seatIds));
+        if (claims == null) {
+            return;
+        }
+        List<Long> taken = new ArrayList<>();
+        for (int i = 0; i < seatIds.size(); i++) {
+            String claim = claims.get(i);
+            if (claim != null && claimExpiresAt(claim) > now.toEpochMilli()) {
+                taken.add(seatIds.get(i));
+            }
+        }
+        if (!taken.isEmpty()) {
+            throw new SeatsUnavailableException(taken);
+        }
+    }
+
     @Override
     public void release(SeatHold hold, List<Long> seatIds) {
         if (!seatIds.isEmpty()) {
@@ -80,6 +103,13 @@ class RedisSeatReservation implements SeatReservationStrategy {
                 }
             }
         });
+    }
+
+    /**
+     * Same value format the Lua scripts write: "holdId:expiresAtEpochMs".
+     */
+    private static long claimExpiresAt(String claim) {
+        return Long.parseLong(claim.substring(claim.lastIndexOf(':') + 1));
     }
 
     /**

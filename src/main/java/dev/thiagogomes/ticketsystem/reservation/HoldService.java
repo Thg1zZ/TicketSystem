@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -32,6 +33,7 @@ public class HoldService {
     private final SeatRepository seatRepository;
     private final EventRepository eventRepository;
     private final SeatReservationStrategy reservationStrategy;
+    private final TransactionTemplate transaction;
     private final Clock clock;
     private final Duration holdTtl;
 
@@ -39,8 +41,10 @@ public class HoldService {
                        SeatRepository seatRepository,
                        EventRepository eventRepository,
                        SeatReservationStrategy reservationStrategy,
+                       TransactionTemplate transaction,
                        Clock clock,
                        @Value("${ticket.hold.ttl}") Duration holdTtl) {
+        this.transaction = transaction;
         this.holdRepository = holdRepository;
         this.seatRepository = seatRepository;
         this.eventRepository = eventRepository;
@@ -50,16 +54,23 @@ public class HoldService {
         log.info("Seat reservation strategy: {}", reservationStrategy.getClass().getSimpleName());
     }
 
-    @Transactional
+    /**
+     * The fast rejection runs before the transaction on purpose: in a sales rush most requests lose, and a loser
+     * that never borrows a database connection leaves the pool to the winners.
+     */
     public HoldResponse create(Long eventId, String userId, List<Long> seatIds) {
         if (new HashSet<>(seatIds).size() != seatIds.size()) {
             throw new BusinessRuleException("Seat ids must not repeat");
         }
+        Instant now = clock.instant();
+        reservationStrategy.rejectIfKnownTaken(eventId, seatIds, now);
+        return transaction.execute(status -> createInTransaction(eventId, userId, seatIds, now));
+    }
+
+    private HoldResponse createInTransaction(Long eventId, String userId, List<Long> seatIds, Instant now) {
         if (!eventRepository.existsById(eventId)) {
             throw new NotFoundException("Event %d not found".formatted(eventId));
         }
-
-        Instant now = clock.instant();
         expirePreviousHoldOrReject(eventId, userId, now);
 
         SeatHold hold = persistNewHold(new SeatHold(eventId, userId, now.plus(holdTtl)));

@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.context.TestPropertySource;
 
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -54,6 +55,17 @@ class RedisReservationTest extends ReservationStrategyContract {
 
         assertThat(redis.hasKey(key(event))).as("bob's Redis claim compensated after rollback").isFalse();
         assertThat(seatRepository.findById(event.seatIds().getFirst()).orElseThrow().getHoldId()).isEqualTo(aliceHold.id());
+    }
+
+    @Test
+    void knownTakenSeatIsRejectedBeforeTouchingTheDatabase() {
+        long eventThatDoesNotExist = 987_654L;
+        long expiresAt = clock.instant().plusSeconds(60).toEpochMilli();
+        redis.opsForValue().set("seat:{" + eventThatDoesNotExist + "}:1", "some-hold:" + expiresAt);
+
+        // Had the request reached the database it would answer 404 (unknown event), not 409
+        assertThatExceptionOfType(SeatsUnavailableException.class)
+                .isThrownBy(() -> holdService.create(eventThatDoesNotExist, "bob", List.of(1L)));
     }
 
     @Test
