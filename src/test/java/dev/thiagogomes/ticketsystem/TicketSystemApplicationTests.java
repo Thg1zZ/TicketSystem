@@ -5,8 +5,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.forwardedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -46,6 +49,16 @@ class TicketSystemApplicationTests {
     void oversizedBodyIsRejectedBeforeParsing() throws Exception {
         mockMvc.perform(post("/events").contentType(MediaType.APPLICATION_JSON).content("x".repeat(70_000)))
                 .andExpect(status().isContentTooLarge());
+    }
+
+    @Test
+    void demoPageIsServedAtTheRoot() throws Exception {
+        mockMvc.perform(get("/")).andExpect(forwardedUrl("index.html"));
+        mockMvc.perform(get("/index.html"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("TicketSystem")));
+        mockMvc.perform(get("/app.js")).andExpect(status().isOk());
+        mockMvc.perform(get("/app.css")).andExpect(status().isOk());
     }
 
     @Test

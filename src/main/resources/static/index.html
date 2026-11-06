@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TicketSystem · Demo</title>
+    <meta name="description" content="Demonstração visual da venda de ingressos com alta concorrência">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='7' width='28' height='18' rx='4' fill='%236366f1'/%3E%3Ccircle cx='2' cy='16' r='3.5' fill='white'/%3E%3Ccircle cx='30' cy='16' r='3.5' fill='white'/%3E%3C/svg%3E">
+    <link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="topbar">
+    <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+            <rect x="2" y="7" width="28" height="18" rx="4"/>
+            <path d="M12 7v18" stroke-dasharray="2 2"/>
+        </svg>
+        <div>
+            <strong>TicketSystem</strong>
+            <small>venda de ingressos com alta concorrência</small>
+        </div>
+    </div>
+    <div class="topbar-actions">
+        <span class="health" id="health" data-state="unknown"><span class="dot"></span><span id="health-text">verificando API…</span></span>
+        <label class="user-field">
+            <span>Comprador</span>
+            <input id="user-id" type="text" maxlength="64" spellcheck="false" autocomplete="off"
+                   pattern="[A-Za-z0-9_\-]{1,64}" aria-describedby="user-hint">
+        </label>
+        <span class="visually-hidden" id="user-hint">Letras, números, hífen ou sublinhado. Cada aba pode ser um comprador diferente.</span>
+    </div>
+</header>
+
+<main class="layout">
+    <section class="venue" aria-labelledby="event-title">
+        <div class="event-bar">
+            <div class="event-info">
+                <p class="eyebrow">Evento</p>
+                <h1 id="event-title">Nenhum evento carregado</h1>
+                <p class="event-meta" id="event-meta">Crie um evento de demonstração ou carregue um pelo id.</p>
+            </div>
+            <form class="event-load" id="load-form">
+                <label class="visually-hidden" for="event-id">Id do evento</label>
+                <input id="event-id" type="number" min="1" placeholder="id" inputmode="numeric">
+                <button type="submit" class="btn ghost">Carregar</button>
+                <button type="button" class="btn" id="open-create">Criar evento</button>
+            </form>
+        </div>
+
+        <ul class="legend" aria-label="Legenda">
+            <li><span class="seat-swatch available"></span>Livre</li>
+            <li><span class="seat-swatch selected"></span>Selecionado</li>
+            <li><span class="seat-swatch mine"></span>Seu</li>
+            <li><span class="seat-swatch held"></span>Reservado</li>
+            <li><span class="seat-swatch sold"></span>Vendido</li>
+        </ul>
+
+        <div class="seatmap" id="seatmap" aria-live="off">
+            <div class="empty-state">
+                <p>O mapa de assentos aparece aqui.</p>
+                <p class="muted">Dica: abra outra aba com outro comprador e dispute o mesmo assento.</p>
+            </div>
+        </div>
+    </section>
+
+    <aside class="side">
+        <section class="card" id="selection-card" aria-labelledby="selection-title">
+            <h2 id="selection-title">Sua seleção</h2>
+            <p class="muted" id="selection-hint">Clique em até 4 assentos livres.</p>
+            <ul class="chips" id="selection-list"></ul>
+            <div class="card-footer">
+                <span class="total" id="selection-total"></span>
+                <button class="btn primary" id="hold-button" disabled>Reservar</button>
+            </div>
+        </section>
+
+        <section class="card" id="hold-card" hidden aria-labelledby="hold-title">
+            <div class="card-head">
+                <h2 id="hold-title">Reserva ativa</h2>
+                <span class="countdown" id="countdown" aria-live="polite">10:00</span>
+            </div>
+            <div class="progress" aria-hidden="true"><span id="countdown-bar"></span></div>
+            <ul class="chips" id="hold-seats"></ul>
+            <p class="key-line">Idempotency-Key <code id="idempotency-key"></code></p>
+            <p class="muted small">Pagar de novo com a mesma chave nunca gera uma segunda cobrança.</p>
+            <div class="card-footer">
+                <button class="btn ghost" id="release-button">Liberar</button>
+                <button class="btn primary" id="pay-button">Pagar <span id="pay-total"></span></button>
+            </div>
+        </section>
+
+        <section class="card" id="order-card" hidden aria-labelledby="order-title">
+            <div class="card-head">
+                <h2 id="order-title">Pedido</h2>
+                <span class="badge" id="order-status"></span>
+            </div>
+            <p class="muted small" id="order-meta"></p>
+            <div class="tickets" id="tickets" aria-live="polite"></div>
+            <div class="card-footer">
+                <button class="btn ghost" id="new-purchase">Nova compra</button>
+                <button class="btn danger" id="cancel-button">Cancelar pedido</button>
+            </div>
+        </section>
+
+        <section class="card log-card" aria-labelledby="log-title">
+            <h2 id="log-title">Atividade da API</h2>
+            <ol class="log" id="log"></ol>
+        </section>
+    </aside>
+</main>
+
+<dialog id="create-dialog" aria-labelledby="create-title">
+    <form method="dialog" id="create-form" class="dialog-form">
+        <h2 id="create-title">Novo evento de demonstração</h2>
+        <label>Nome <input name="name" required maxlength="200" value="Show de Abertura"></label>
+        <label>Local <input name="venue" required maxlength="200" value="Arena Central"></label>
+        <div class="field-row">
+            <label>Fileiras <input name="rows" type="number" min="1" max="26" value="8" required></label>
+            <label>Assentos por fileira <input name="seatsPerRow" type="number" min="1" max="100" value="14" required></label>
+            <label>Preço (R$) <input name="price" type="number" min="0.01" max="999999.99" step="0.01" value="150" required></label>
+        </div>
+        <label>Token de admin
+            <input name="adminToken" type="password" required autocomplete="off" placeholder="valor de ADMIN_TOKEN (.env)">
+        </label>
+        <p class="muted small">Criar eventos é uma operação de administrador (header X-Admin-Token). O token não é salvo.</p>
+        <div class="dialog-actions">
+            <button type="button" class="btn ghost" id="close-create">Fechar</button>
+            <button type="submit" class="btn primary" value="create">Criar</button>
+        </div>
+    </form>
+</dialog>
+
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
