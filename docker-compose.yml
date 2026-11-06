@@ -60,5 +60,18 @@ services:
       rabbitmq:
         condition: service_healthy
 
+  # Só roda com --profile loadtest e --no-deps, sem recriar o app (ver loadtest/run-all.sh)
+  k6:
+    image: grafana/k6:2.2.0
+    profiles: ["loadtest"]
+    environment:
+      BASE_URL: http://app:8081
+      RESULT_NAME: ${RESULT_NAME:-local}
+      USERS: ${USERS:-5000}
+      VUS: ${VUS:-1000}
+    volumes:
+      - ./loadtest:/scripts
+    command: ["run", "--quiet", "/scripts/seat-rush.js"]
+
 volumes:
   pgdata:
