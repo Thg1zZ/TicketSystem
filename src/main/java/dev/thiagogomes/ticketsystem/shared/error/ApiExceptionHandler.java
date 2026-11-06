@@ -2,6 +2,7 @@ package dev.thiagogomes.ticketsystem.shared.error;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.MessageSourceResolvable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -12,7 +13,9 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.validation.method.ParameterValidationResult;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 import java.util.Map;
@@ -37,6 +40,13 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return problem(HttpStatus.UNPROCESSABLE_CONTENT, "Business rule violated", ex.getMessage());
     }
 
+    @ExceptionHandler(ConflictException.class)
+    ProblemDetail handleConflict(ConflictException ex) {
+        ProblemDetail problem = problem(HttpStatus.CONFLICT, "Conflict", ex.getMessage());
+        ex.details().forEach(problem::setProperty);
+        return problem;
+    }
+
     @ExceptionHandler(DataIntegrityViolationException.class)
     ProblemDetail handleDataIntegrity(DataIntegrityViolationException ex) {
         log.warn("Data integrity violation: {}", ex.getMostSpecificCause().getMessage());
@@ -56,10 +66,31 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         for (FieldError error : ex.getBindingResult().getFieldErrors()) {
             errors.putIfAbsent(error.getField(), error.getDefaultMessage());
         }
-        ProblemDetail body = ex.getBody();
+        return handleExceptionInternal(ex, withErrors(ex.getBody(), errors), headers, status, request);
+    }
+
+    /**
+     * Raised instead of the above when the handler also validates headers/path variables.
+     */
+    @Override
+    protected ResponseEntity<Object> handleHandlerMethodValidationException(
+            HandlerMethodValidationException ex, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+        Map<String, String> errors = new TreeMap<>();
+        for (ParameterValidationResult result : ex.getParameterValidationResults()) {
+            for (MessageSourceResolvable error : result.getResolvableErrors()) {
+                String field = error instanceof FieldError fieldError
+                        ? fieldError.getField()
+                        : result.getMethodParameter().getParameterName();
+                errors.putIfAbsent(field, error.getDefaultMessage());
+            }
+        }
+        return handleExceptionInternal(ex, withErrors(ex.getBody(), errors), headers, status, request);
+    }
+
+    private static ProblemDetail withErrors(ProblemDetail body, Map<String, String> errors) {
         body.setDetail("Request has invalid fields");
         body.setProperty("errors", errors);
-        return handleExceptionInternal(ex, body, headers, status, request);
+        return body;
     }
 
     private static ProblemDetail problem(HttpStatus status, String title, String detail) {
