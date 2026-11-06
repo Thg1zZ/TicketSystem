@@ -2,6 +2,8 @@ package dev.thiagogomes.ticketsystem.checkout;
 
 import dev.thiagogomes.ticketsystem.event.Seat;
 import dev.thiagogomes.ticketsystem.event.SeatRepository;
+import dev.thiagogomes.ticketsystem.messaging.Messaging;
+import dev.thiagogomes.ticketsystem.messaging.Outbox;
 import dev.thiagogomes.ticketsystem.payment.FakePaymentGateway;
 import dev.thiagogomes.ticketsystem.payment.PaymentResult;
 import dev.thiagogomes.ticketsystem.reservation.HoldService;
@@ -44,6 +46,7 @@ public class CheckoutService {
     private final SeatRepository seatRepository;
     private final HoldService holdService;
     private final FakePaymentGateway paymentGateway;
+    private final Outbox outbox;
     private final TransactionTemplate transaction;
     private final Clock clock;
 
@@ -52,8 +55,10 @@ public class CheckoutService {
                            SeatRepository seatRepository,
                            HoldService holdService,
                            FakePaymentGateway paymentGateway,
+                           Outbox outbox,
                            TransactionTemplate transaction,
                            Clock clock) {
+        this.outbox = outbox;
         this.orderRepository = orderRepository;
         this.orderItemRepository = orderItemRepository;
         this.seatRepository = seatRepository;
@@ -157,6 +162,7 @@ public class CheckoutService {
             throw new SeatsLostException();
         }
         orderItemRepository.setActive(order.getId(), true);
+        outbox.append(Messaging.ORDER_CONFIRMED, order.getId(), new OrderConfirmedEvent(order.getId(), order.getUserId()));
     }
 
     private void markFailed(Order order) {
