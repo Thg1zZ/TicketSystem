@@ -29,6 +29,15 @@ spring:
     port: 5673
     username: ticket
     password: ticket
+    publisher-confirm-type: simple
+    listener:
+      simple:
+        default-requeue-rejected: false # retries exhausted -> dead-letter queue, never an infinite requeue loop
+        retry:
+          enabled: true
+          max-retries: 2
+          initial-interval: 1s
+          multiplier: 2
 
 ticket:
   reservation:
@@ -43,6 +52,10 @@ ticket:
     min-latency: PT0.05S
     max-latency: PT0.3S
     failure-rate: 0.1
+  outbox:
+    relay-interval: PT0.5S
+  notification:
+    failure-rate: 0
 
 management:
   endpoints:
