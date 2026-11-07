@@ -56,6 +56,14 @@
             <li class="live" id="live-status" data-live="false" title="Server-Sent Events, com polling como reserva">atualizando a cada 2 s</li>
         </ul>
 
+        <div class="queue" id="queue" hidden role="status" aria-live="polite">
+            <p class="eyebrow">Sala de espera</p>
+            <p class="queue-position">Você é o <strong id="queue-position">—</strong>º da fila</p>
+            <p class="muted" id="queue-eta"></p>
+            <p class="muted small">Esta venda usa fila virtual: os compradores entram em ordem de chegada, num ritmo que o
+                sistema aguenta, em vez de todos disputarem o banco no mesmo segundo.</p>
+        </div>
+
         <div class="seatmap" id="seatmap" aria-live="off">
             <div class="empty-state">
                 <p>O mapa de assentos aparece aqui.</p>

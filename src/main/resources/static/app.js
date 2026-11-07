@@ -3,6 +3,7 @@
 
 const POLL_SEATS_MS = 2000;
 const POLL_TICKETS_MS = 1000;
+const POLL_QUEUE_MS = 2000;
 const HEALTH_MS = 10000;
 const HOLD_TTL_MS = 10 * 60 * 1000;
 const MAX_SEATS = 4;
@@ -44,6 +45,8 @@ const state = {
     qrUrls: new Map(),
     liveSeats: null, // EventSource while the live stream is connected
     live: false,
+    queuePass: null, // X-Queue-Pass once admitted (null when the queue is off)
+    queueTimer: null,
 };
 
 class ApiError extends Error {
@@ -162,8 +165,62 @@ function initUser() {
         state.userId = value;
         store.set('sessionStorage', 'ts.user', value);
         resetPurchase();
+        enterQueue(); // the pass belongs to the previous buyer
         toast(`Agora você compra como "${value}".`);
     });
+}
+
+// ---------- Virtual queue ----------
+
+/**
+ * Joining is idempotent, so a reload or a second tab keeps the same place (or gets the same pass back).
+ * With the queue off the server answers OPEN and nothing changes.
+ */
+async function enterQueue() {
+    clearTimeout(state.queueTimer);
+    state.queuePass = null;
+    if (!state.eventId) return;
+    try {
+        const { data } = await api('POST', `/events/${state.eventId}/queue`);
+        applyQueueStatus(data);
+    } catch (error) {
+        showQueue(null);
+        toast(error.message, 'error');
+    }
+}
+
+async function pollQueue() {
+    try {
+        const { data } = await api('GET', `/events/${state.eventId}/queue`, { log: false });
+        applyQueueStatus(data);
+    } catch (error) {
+        if (error.status === 404) {
+            await enterQueue(); // the pass expired: back to the line
+        } else {
+            state.queueTimer = setTimeout(pollQueue, POLL_QUEUE_MS);
+        }
+    }
+}
+
+function applyQueueStatus(status) {
+    if (status.status === 'WAITING') {
+        showQueue(status);
+        state.queueTimer = setTimeout(pollQueue, POLL_QUEUE_MS);
+        return;
+    }
+    const wasWaiting = !$('queue').hidden;
+    state.queuePass = status.status === 'ADMITTED' ? status.pass : null;
+    showQueue(null);
+    if (wasWaiting) toast('Sua vez! O passe vale 15 minutos para reservar.', 'ok');
+}
+
+function showQueue(waiting) {
+    $('queue').hidden = !waiting;
+    $('seatmap').hidden = Boolean(waiting);
+    if (waiting) {
+        $('queue-position').textContent = waiting.position.toLocaleString('pt-BR');
+        $('queue-eta').textContent = `Espera estimada: ~${waiting.estimatedWaitSeconds} s`;
+    }
 }
 
 // ---------- Event and seat map ----------
@@ -181,6 +238,7 @@ async function loadEvent(eventId) {
         $('event-meta').textContent = `${data.venue} · ${dateTime.format(new Date(data.startsAt))} · ${sectors}`;
         await refreshSeats({ log: true });
         connectLiveSeats();
+        await enterQueue();
         return true;
     } catch (error) {
         if (error.status === 404) store.set('localStorage', 'ts.event', null);
@@ -342,7 +400,8 @@ async function reserve() {
     const seatIds = [...state.selected];
     await busy($('hold-button'), async () => {
         try {
-            const { data } = await api('POST', `/events/${state.eventId}/holds`, { body: { seatIds } });
+            const headers = state.queuePass ? { 'X-Queue-Pass': state.queuePass } : {};
+            const { data } = await api('POST', `/events/${state.eventId}/holds`, { body: { seatIds }, headers });
             state.selected.clear();
             setHold(data, crypto.randomUUID());
             toast(`${data.seats.map((seat) => `${seat.row}${seat.number}`).join(', ')} reservados por 10 minutos.`, 'ok');
@@ -352,7 +411,10 @@ async function reserve() {
                 state.selected.delete(seatId);
                 flashSeat(seatId);
             });
-            if (lost.length) {
+            if (error.status === 403) {
+                toast('Seu passe da fila venceu: você voltou para a fila.', 'warn');
+                await enterQueue();
+            } else if (lost.length) {
                 toast(`Alguém foi mais rápido: ${lost.map(seatLabel).join(', ')} já foi reservado (409).`, 'error');
             } else if (error.problem?.holdId) {
                 await restoreHold(error.problem.holdId);

@@ -161,6 +161,9 @@ input:invalid { border-color: var(--danger); }
 
 /* Seat map */
 .seatmap { overflow-x: auto; padding: 8px 4px 4px; }
+.queue { text-align: center; padding: 56px 16px; border: 1px dashed var(--accent); border-radius: 12px; background: var(--accent-soft); }
+.queue-position { font-size: 1.1rem; margin: 6px 0 4px; }
+.queue-position strong { display: block; font-size: 2.4rem; line-height: 1.2; color: var(--accent); font-variant-numeric: tabular-nums; }
 .empty-state { text-align: center; padding: 64px 16px; border: 1px dashed var(--border); border-radius: 12px; }
 .empty-state p + p { margin-top: 6px; }
 
