@@ -23,6 +23,9 @@ import java.lang.annotation.Target;
         // Readers right after a write must see it; concurrent reads are still coalesced (single-flight)
         "ticket.seat-map.cache-ttl=0s",
         "ticket.seat-map.push-interval=PT0.1S",
+        // Tests fire many writes from one IP and user; AdmissionControlTest turns both features on
+        "ticket.rate-limit.enabled=false",
+        "ticket.queue.enabled=false",
         "spring.rabbitmq.listener.simple.retry.initial-interval=50ms"
 })
 @AutoConfigureMockMvc

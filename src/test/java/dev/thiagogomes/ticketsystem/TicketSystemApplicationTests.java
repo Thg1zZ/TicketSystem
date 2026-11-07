@@ -48,6 +48,14 @@ class TicketSystemApplicationTests {
     }
 
     @Test
+    void queueIsOpenWhileDisabled() throws Exception {
+        mockMvc.perform(post("/events/{id}/queue", 1).header("X-User-Id", "anyone"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("OPEN"))
+                .andExpect(jsonPath("$.pass").doesNotExist());
+    }
+
+    @Test
     void responsesCarrySecurityHeaders() throws Exception {
         mockMvc.perform(get("/events/1"))
                 .andExpect(header().string("X-Content-Type-Options", "nosniff"))

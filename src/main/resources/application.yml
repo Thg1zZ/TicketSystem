@@ -1,5 +1,7 @@
 server:
   port: 8081
+  # Client IP from X-Forwarded-For, trusted only from private-network proxies (nginx overwrites the header)
+  forward-headers-strategy: native
 
 # Credenciais vêm de variáveis de ambiente; os padrões existem só para rodar localmente (ver .env.example)
 spring:
@@ -77,6 +79,19 @@ ticket:
     heartbeat-interval: PT15S
     stream-timeout: PT30M      # EventSource reconnects by itself after this
     max-streams: 2000          # per instance; above it clients get 503 and fall back to polling
+  queue:
+    enabled: false             # waiting room: holds then require the X-Queue-Pass of an admitted buyer
+    admissions-per-second: 100 # across all replicas
+    pass-ttl: PT15M            # longer than a hold, so an admitted buyer can still pay
+    pass-secret: ${QUEUE_PASS_SECRET:} # HMAC key, at least 32 bytes; required when the queue is on
+  rate-limit:
+    enabled: true
+    per-ip:                    # generous: many people can share an IP (NAT, mobile carriers)
+      capacity: 100
+      refill-per-second: 50
+    per-user:
+      capacity: 5
+      refill-per-second: 1
   notification:
     failure-rate: 0
 

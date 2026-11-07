@@ -1,5 +1,6 @@
 package dev.thiagogomes.ticketsystem.reservation;
 
+import dev.thiagogomes.ticketsystem.queue.VirtualQueue;
 import dev.thiagogomes.ticketsystem.shared.ValidUserId;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -18,6 +19,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.UUID;
 
+import static dev.thiagogomes.ticketsystem.shared.RequestHeaders.QUEUE_PASS;
 import static dev.thiagogomes.ticketsystem.shared.RequestHeaders.USER_ID;
 
 @Tag(name = "Holds")
@@ -25,17 +27,22 @@ import static dev.thiagogomes.ticketsystem.shared.RequestHeaders.USER_ID;
 class HoldController {
 
     private final HoldService holdService;
+    private final VirtualQueue queue;
 
-    HoldController(HoldService holdService) {
+    HoldController(HoldService holdService, VirtualQueue queue) {
         this.holdService = holdService;
+        this.queue = queue;
     }
 
-    @Operation(summary = "Temporarily hold up to 4 seats for 10 minutes")
+    @Operation(summary = "Temporarily hold up to 4 seats for 10 minutes",
+            description = "With the virtual queue on, requires the X-Queue-Pass received when admitted (403 otherwise)")
     @PostMapping("/events/{eventId}/holds")
     ResponseEntity<HoldResponse> create(@PathVariable Long eventId,
                                         @RequestHeader(USER_ID) @ValidUserId String userId,
+                                        @RequestHeader(value = QUEUE_PASS, required = false) String queuePass,
                                         @Valid @RequestBody CreateHoldRequest request,
                                         UriComponentsBuilder uriBuilder) {
+        queue.requireAdmission(eventId, userId, queuePass);
         HoldResponse hold = holdService.create(eventId, userId, request.seatIds());
         var location = uriBuilder.path("/holds/{id}").buildAndExpand(hold.id()).toUri();
         return ResponseEntity.created(location).body(hold);

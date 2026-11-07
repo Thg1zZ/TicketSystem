@@ -30,6 +30,7 @@ class OpenApiConfig {
     private static final Map<String, String> STANDARD_ERRORS = Map.of(
             "400", "Invalid request (field errors listed in 'errors')",
             "404", "Not found, also returned for resources that belong to another user",
+            "429", "Too many requests from this user or IP; retry after Retry-After seconds",
             "409", "Conflict with the current state (seat taken, hold not active...)",
             "422", "Business rule violated (sales closed, repeated seats...)",
             "503", "A dependency is temporarily unavailable; retry after Retry-After seconds");

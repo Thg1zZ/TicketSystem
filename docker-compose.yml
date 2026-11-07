@@ -70,6 +70,11 @@ services:
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-ticket}
       ADMIN_TOKEN: ${ADMIN_TOKEN:-local-admin-token}
       TICKET_RESERVATION_STRATEGY: ${STRATEGY:-pessimistic}
+      # Fila virtual (sala de espera) e rate limit por usuário/IP
+      TICKET_QUEUE_ENABLED: ${QUEUE_ENABLED:-false}
+      TICKET_QUEUE_ADMISSIONS_PER_SECOND: ${QUEUE_ADMISSIONS_PER_SECOND:-100}
+      QUEUE_PASS_SECRET: ${QUEUE_PASS_SECRET:-local-dev-queue-pass-secret-change-me}
+      TICKET_RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
       # Actuator completo só na porta interna 8082 (rede do Docker, sem publicar no host);
       # a porta pública mantém apenas /livez e /readyz
       MANAGEMENT_SERVER_PORT: 8082
@@ -136,6 +141,7 @@ services:
       RESULT_NAME: ${RESULT_NAME:-local}
       USERS: ${USERS:-5000}
       VUS: ${VUS:-1000}
+      QUEUE: ${QUEUE_ENABLED:-false}
     volumes:
       - ./loadtest:/scripts
     command: ["run", "--quiet", "/scripts/${K6_SCRIPT:-seat-rush.js}"]

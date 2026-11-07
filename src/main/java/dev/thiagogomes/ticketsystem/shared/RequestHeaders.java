@@ -15,6 +15,11 @@ public final class RequestHeaders {
     public static final String IDEMPOTENCY_KEY = "Idempotency-Key";
 
     /**
+     * Signed admission pass from the virtual queue, required to hold seats while the queue is on.
+     */
+    public static final String QUEUE_PASS = "X-Queue-Pass";
+
+    /**
      * Response header telling the client this result was stored by an earlier request with the same key.
      */
     public static final String IDEMPOTENT_REPLAYED = "Idempotent-Replayed";
