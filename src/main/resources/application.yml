@@ -2,6 +2,10 @@ server:
   port: 8081
   # Client IP from X-Forwarded-For, trusted only from private-network proxies (nginx overwrites the header)
   forward-headers-strategy: native
+  tomcat:
+    # Connections waiting to be accepted. Tomcat's default (100) overflows when a rush opens hundreds at once:
+    # the kernel drops the extra SYNs and nginx gives up connecting (504)
+    accept-count: 1024
 
 # Credenciais vêm de variáveis de ambiente; os padrões existem só para rodar localmente (ver .env.example)
 spring:
