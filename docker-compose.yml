@@ -56,6 +56,7 @@ services:
     # Sem swap: estourar o limite vira OOM visível em vez de pausas de GC de segundos
     mem_limit: ${APP_MEMORY:-1g}
     memswap_limit: ${APP_MEMORY:-1g}
+    restart: unless-stopped # a replica killed by OOM comes back instead of staying down
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tickets
       DB_USERNAME: ${DB_USERNAME:-ticket}
