@@ -9,6 +9,9 @@ cd "$(dirname "$0")/.."
 
 STRATEGIES=${STRATEGIES:-"pessimistic optimistic conditional redis"}
 export APP_REPLICAS=${APP_REPLICAS:-3}
+export QUEUE_ENABLED=${QUEUE_ENABLED:-false}
+# Todo o k6 sai de um IP só: o limite por IP barraria o próprio teste
+export RATE_LIMIT_ENABLED=false
 mkdir -p loadtest/results
 
 reset_stack() {
@@ -41,7 +44,8 @@ payments() {
 }
 
 for strategy in $STRATEGIES; do
-  name="$strategy-${APP_REPLICAS}r"
+  suffix=""; [ "$QUEUE_ENABLED" = true ] && suffix="-queue"
+  name="$strategy-${APP_REPLICAS}r$suffix"
   echo "=================== $strategy, $APP_REPLICAS réplica(s) ==================="
   reset_stack
   STRATEGY=$strategy docker compose up -d --build >/dev/null 2>&1

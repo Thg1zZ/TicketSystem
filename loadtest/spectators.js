@@ -65,19 +65,33 @@ export function watch(data) {
     }
 }
 
+// Pass of this VU's buyer when the virtual queue is on ('' = queue off, no pass needed)
+let queuePass = null;
+
 export function buy(data) {
     const user = `${RESULT_NAME}-buyer-${exec.vu.idInTest}`;
+    if (queuePass === null) {
+        const queue = http.post(`${BASE_URL}/events/${data.eventId}/queue`, null, { headers: { 'X-User-Id': user }, tags: { name: 'queue' } });
+        const state = queue.status === 200 ? queue.json('status') : null;
+        if (state === 'OPEN') queuePass = '';
+        if (state === 'ADMITTED') queuePass = queue.json('pass');
+        if (queuePass === null) {
+            sleep(1); // still waiting in line
+            return;
+        }
+    }
     const seatId = data.seatIds[Math.floor(Math.random() * data.seatIds.length)];
     const hold = http.post(`${BASE_URL}/events/${data.eventId}/holds`, JSON.stringify({ seatIds: [seatId] }), {
-        headers: { 'Content-Type': 'application/json', 'X-User-Id': user },
-        tags: { name: 'hold' }, responseCallback: http.expectedStatuses(201, 409),
+        headers: { 'Content-Type': 'application/json', 'X-User-Id': user, ...(queuePass ? { 'X-Queue-Pass': queuePass } : {}) },
+        // 429: the rate limit slowing this buyer down is expected behavior, not an error
+        tags: { name: 'hold' }, responseCallback: http.expectedStatuses(201, 409, 429),
     });
     if (hold.status === 201) {
         sleep(0.5);
         http.del(`${BASE_URL}/holds/${hold.json('id')}`, null, {
-            headers: { 'X-User-Id': user }, tags: { name: 'release' }, responseCallback: http.expectedStatuses(204),
+            headers: { 'X-User-Id': user }, tags: { name: 'release' }, responseCallback: http.expectedStatuses(204, 429),
         });
-    } else if (hold.status !== 409) {
+    } else if (hold.status !== 409 && hold.status !== 429) {
         unexpected.add(1);
     }
     sleep(0.5);
