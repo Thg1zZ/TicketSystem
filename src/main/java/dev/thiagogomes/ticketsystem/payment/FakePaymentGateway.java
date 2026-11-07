@@ -12,8 +12,12 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Simulated card processor with configurable latency and decline rate. Like real gateways (Stripe, Adyen),
@@ -26,38 +30,44 @@ public class FakePaymentGateway {
 
     private final ConcurrentMap<String, FutureTask<PaymentResult>> charges = new ConcurrentHashMap<>();
     private final Set<String> refunds = ConcurrentHashMap.newKeySet();
+    // The "remote side": a charge keeps going after the caller stops waiting, like a request already sent
+    private final ExecutorService processor = Executors.newVirtualThreadPerTaskExecutor();
     private final Duration minLatency;
     private final Duration maxLatency;
     private final double failureRate;
+    private final Duration timeout;
     private final MeterRegistry meters;
 
     public FakePaymentGateway(@Value("${ticket.payment.min-latency}") Duration minLatency,
                               @Value("${ticket.payment.max-latency}") Duration maxLatency,
                               @Value("${ticket.payment.failure-rate}") double failureRate,
+                              @Value("${ticket.payment.timeout}") Duration timeout,
                               MeterRegistry meters) {
-        if (minLatency.compareTo(maxLatency) > 0 || failureRate < 0 || failureRate > 1) {
+        if (minLatency.compareTo(maxLatency) > 0 || failureRate < 0 || failureRate > 1 || !timeout.isPositive()) {
             throw new IllegalArgumentException("Invalid fake payment configuration");
         }
         this.minLatency = minLatency;
         this.maxLatency = maxLatency;
         this.failureRate = failureRate;
+        this.timeout = timeout;
         this.meters = meters;
     }
 
     /**
-     * Concurrent calls with the same key share one in-flight charge (memoizer): the first caller
-     * runs it, the others wait for the same result.
+     * Concurrent calls with the same key share one charge (memoizer). Waits at most the timeout; after that the
+     * outcome is unknown to the caller, but a retry with the same key finds the same charge.
+     *
+     * @throws PaymentTimeoutException when the charge did not answer in time
      */
     public PaymentResult charge(String idempotencyKey, BigDecimal amount) {
         if (amount.signum() <= 0) {
             throw new IllegalArgumentException("Amount must be positive");
         }
-        FutureTask<PaymentResult> newCharge = new FutureTask<>(this::process);
-        FutureTask<PaymentResult> charge = charges.putIfAbsent(idempotencyKey, newCharge);
-        if (charge == null) {
-            charge = newCharge;
-            charge.run();
-        }
+        FutureTask<PaymentResult> charge = charges.computeIfAbsent(idempotencyKey, key -> {
+            FutureTask<PaymentResult> started = new FutureTask<>(this::process);
+            processor.execute(started);
+            return started;
+        });
         return await(idempotencyKey, charge);
     }
 
@@ -82,7 +92,9 @@ public class FakePaymentGateway {
 
     private PaymentResult await(String idempotencyKey, FutureTask<PaymentResult> charge) {
         try {
-            return charge.get();
+            return charge.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException stillRunning) {
+            throw new PaymentTimeoutException(idempotencyKey, timeout); // keep it: the charge may still go through
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Interrupted while waiting for payment", e);

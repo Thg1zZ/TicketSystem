@@ -4,6 +4,7 @@ import dev.thiagogomes.ticketsystem.event.Seat;
 import dev.thiagogomes.ticketsystem.messaging.Messaging;
 import dev.thiagogomes.ticketsystem.messaging.Outbox;
 import dev.thiagogomes.ticketsystem.payment.FakePaymentGateway;
+import dev.thiagogomes.ticketsystem.payment.PaymentClient;
 import dev.thiagogomes.ticketsystem.payment.PaymentResult;
 import dev.thiagogomes.ticketsystem.reservation.HoldService;
 import dev.thiagogomes.ticketsystem.reservation.SeatHold;
@@ -12,10 +13,12 @@ import dev.thiagogomes.ticketsystem.shared.error.BusinessRuleException;
 import dev.thiagogomes.ticketsystem.shared.error.ConflictException;
 import dev.thiagogomes.ticketsystem.shared.error.PaymentRequiredException;
 import dev.thiagogomes.ticketsystem.shared.error.ServiceUnavailableException;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.resilience.InvocationRejectedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -48,6 +51,7 @@ public class CheckoutService {
     private final SeatInventoryRepository seatInventory;
     private final HoldService holdService;
     private final FakePaymentGateway paymentGateway;
+    private final PaymentClient paymentClient;
     private final Outbox outbox;
     private final TransactionTemplate transaction;
     private final Clock clock;
@@ -58,6 +62,7 @@ public class CheckoutService {
                            SeatInventoryRepository seatInventory,
                            HoldService holdService,
                            FakePaymentGateway paymentGateway,
+                           PaymentClient paymentClient,
                            Outbox outbox,
                            TransactionTemplate transaction,
                            Clock clock,
@@ -69,6 +74,7 @@ public class CheckoutService {
         this.seatInventory = seatInventory;
         this.holdService = holdService;
         this.paymentGateway = paymentGateway;
+        this.paymentClient = paymentClient;
         this.transaction = transaction;
         this.clock = clock;
     }
@@ -162,13 +168,19 @@ public class CheckoutService {
     }
 
     /**
-     * A gateway error leaves the order PENDING: retrying with the same Idempotency-Key (or the recovery job)
-     * reuses the same gateway key, so it can never turn into a second charge.
+     * Any failure leaves the order PENDING: retrying with the same Idempotency-Key (or the recovery job) reuses
+     * the same gateway key, so it can never turn into a second charge.
      */
     private PaymentResult charge(Order order) {
         try {
-            return paymentGateway.charge(order.paymentKey(), order.getTotalAmount());
+            return paymentClient.charge(order.paymentKey(), order.getTotalAmount());
+        } catch (CallNotPermittedException | InvocationRejectedException notAttempted) {
+            countCheckout("unavailable");
+            throw new ServiceUnavailableException(
+                    "Payment service is unavailable right now; nothing was charged. Retry with the same Idempotency-Key",
+                    notAttempted);
         } catch (RuntimeException gatewayFailure) {
+            countCheckout("unavailable");
             throw new ServiceUnavailableException(
                     "Payment outcome unknown; retry with the same Idempotency-Key", gatewayFailure);
         }

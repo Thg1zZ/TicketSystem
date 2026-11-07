@@ -21,6 +21,7 @@
         <springdoc.version>3.2.0</springdoc.version>
         <zxing.version>3.5.4</zxing.version>
         <shedlock.version>7.10.1</shedlock.version>
+        <resilience4j.version>2.4.0</resilience4j.version>
         <jacoco.version>0.8.15</jacoco.version>
     </properties>
 
@@ -50,6 +51,11 @@
             <groupId>net.javacrumbs.shedlock</groupId>
             <artifactId>shedlock-provider-redis-spring</artifactId>
             <version>${shedlock.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-spring-boot4</artifactId>
+            <version>${resilience4j.version}</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

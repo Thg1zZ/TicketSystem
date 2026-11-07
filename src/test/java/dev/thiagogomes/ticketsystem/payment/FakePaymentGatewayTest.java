@@ -7,6 +7,7 @@ import java.math.BigDecimal;
 import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class FakePaymentGatewayTest {
 
@@ -21,6 +22,18 @@ class FakePaymentGatewayTest {
 
         assertThat(again).isEqualTo(first);
         assertThat(count("approved")).isEqualTo(1);
+    }
+
+    @Test
+    void timedOutChargeKeepsGoingAndARetryFindsItInsteadOfChargingAgain() throws Exception {
+        FakePaymentGateway slowGateway = new FakePaymentGateway(Duration.ofMillis(400), Duration.ofMillis(400), 0,
+                Duration.ofMillis(100), meters);
+
+        assertThatThrownBy(() -> slowGateway.charge("order-slow", BigDecimal.TEN)).isInstanceOf(PaymentTimeoutException.class);
+        Thread.sleep(500); // the gateway finished on its side meanwhile
+
+        assertThat(slowGateway.charge("order-slow", BigDecimal.TEN).approved()).isTrue();
+        assertThat(meters.counter("payments", "outcome", "approved").count()).isEqualTo(1);
     }
 
     @Test
@@ -47,7 +60,7 @@ class FakePaymentGatewayTest {
     }
 
     private FakePaymentGateway gateway(double failureRate) {
-        return new FakePaymentGateway(Duration.ZERO, Duration.ZERO, failureRate, meters);
+        return new FakePaymentGateway(Duration.ZERO, Duration.ZERO, failureRate, Duration.ofSeconds(5), meters);
     }
 
     private double count(String outcome) {

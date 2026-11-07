@@ -64,6 +64,8 @@ ticket:
     min-latency: PT0.05S
     max-latency: PT0.3S
     failure-rate: 0.1
+    timeout: PT3S              # like an HTTP read timeout: the charge goes on, its outcome is unknown (503)
+    max-concurrent: 100        # bulkhead: calls in flight per instance; more are rejected at once (503)
   outbox:
     relay-interval: PT0.5S
   seat-map:
@@ -102,6 +104,21 @@ management:
         http.server.requests: 5ms
       maximum-expected-value:
         http.server.requests: 30s # above the ceiling everything lands in +Inf, so keep it past the worst tail seen
+
+# Circuit breakers: after repeated failures, stop calling the dependency for a while and fail fast
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+    instances:
+      payment:
+        wait-duration-in-open-state: 10s
 
 springdoc:
   swagger-ui:
