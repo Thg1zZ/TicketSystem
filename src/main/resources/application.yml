@@ -29,6 +29,9 @@ spring:
       host: localhost
       port: 6380
       password: ${REDIS_PASSWORD:ticket}
+      # Fail fast: Lettuce would wait 60 s per command on a stuck Redis; every Redis use has a fallback
+      timeout: 1s
+      connect-timeout: 1s
   rabbitmq:
     host: localhost
     port: 5673
@@ -119,6 +122,8 @@ resilience4j:
     instances:
       payment:
         wait-duration-in-open-state: 10s
+      redis:
+        wait-duration-in-open-state: 5s
 
 springdoc:
   swagger-ui:

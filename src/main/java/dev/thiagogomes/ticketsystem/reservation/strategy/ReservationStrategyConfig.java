@@ -1,6 +1,7 @@
 package dev.thiagogomes.ticketsystem.reservation.strategy;
 
 import dev.thiagogomes.ticketsystem.reservation.SeatInventoryRepository;
+import dev.thiagogomes.ticketsystem.shared.RedisCircuit;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,12 +21,13 @@ class ReservationStrategyConfig {
     @Bean
     SeatReservationStrategy seatReservationStrategy(@Value("${" + SeatReservationStrategy.PROPERTY + ":pessimistic}") String configured,
                                                     SeatInventoryRepository seatInventory,
-                                                    StringRedisTemplate redis) {
+                                                    StringRedisTemplate redis,
+                                                    RedisCircuit redisCircuit) {
         return switch (parse(configured)) {
             case PESSIMISTIC -> new PessimisticSeatReservation(seatInventory);
             case OPTIMISTIC -> new OptimisticSeatReservation(seatInventory);
             case CONDITIONAL -> new ConditionalUpdateSeatReservation(seatInventory);
-            case REDIS -> new RedisSeatReservation(seatInventory, redis);
+            case REDIS -> new RedisSeatReservation(seatInventory, redis, redisCircuit);
         };
     }
 

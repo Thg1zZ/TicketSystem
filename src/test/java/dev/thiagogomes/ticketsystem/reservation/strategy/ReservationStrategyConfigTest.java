@@ -13,8 +13,8 @@ class ReservationStrategyConfigTest {
 
     @Test
     void picksStrategyIgnoringCaseAndSpaces() {
-        assertThat(config.seatReservationStrategy(" Redis ", null, null)).isInstanceOf(RedisSeatReservation.class);
-        assertThat(config.seatReservationStrategy("conditional", null, null)).isInstanceOf(ConditionalUpdateSeatReservation.class);
+        assertThat(config.seatReservationStrategy(" Redis ", null, null, null)).isInstanceOf(RedisSeatReservation.class);
+        assertThat(config.seatReservationStrategy("conditional", null, null, null)).isInstanceOf(ConditionalUpdateSeatReservation.class);
     }
 
     @Test
@@ -22,7 +22,7 @@ class ReservationStrategyConfigTest {
         Locale original = Locale.getDefault();
         try {
             Locale.setDefault(Locale.forLanguageTag("tr-TR")); // "redis".toUpperCase() would be "REDİS" here
-            assertThat(config.seatReservationStrategy("redis", null, null)).isInstanceOf(RedisSeatReservation.class);
+            assertThat(config.seatReservationStrategy("redis", null, null, null)).isInstanceOf(RedisSeatReservation.class);
         } finally {
             Locale.setDefault(original);
         }
@@ -31,7 +31,7 @@ class ReservationStrategyConfigTest {
     @Test
     void unknownStrategyFailsWithTheValidOptions() {
         assertThatIllegalStateException()
-                .isThrownBy(() -> config.seatReservationStrategy("warmup-pessimistic", null, null))
+                .isThrownBy(() -> config.seatReservationStrategy("warmup-pessimistic", null, null, null))
                 .withMessageContaining("warmup-pessimistic")
                 .withMessageContaining("pessimistic, optimistic, conditional, redis");
     }

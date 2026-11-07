@@ -4,6 +4,7 @@ import dev.thiagogomes.ticketsystem.event.Seat;
 import dev.thiagogomes.ticketsystem.reservation.SeatHold;
 import dev.thiagogomes.ticketsystem.reservation.SeatInventoryRepository;
 import dev.thiagogomes.ticketsystem.reservation.SeatsUnavailableException;
+import dev.thiagogomes.ticketsystem.shared.RedisCircuit;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
@@ -19,6 +20,8 @@ import java.util.UUID;
  * Redis is the gate, Postgres stays the source of truth. A Lua script claims all seats or none,
  * so only winners reach the database, which then confirms with a conditional UPDATE
  * (protects against Redis data loss or a seat sold after its Redis key expired).
+ * <p>
+ * If Redis is down the strategy degrades to that database gate alone: slower in a rush, never wrong.
  */
 class RedisSeatReservation implements SeatReservationStrategy {
 
@@ -28,10 +31,12 @@ class RedisSeatReservation implements SeatReservationStrategy {
 
     private final SeatInventoryRepository seatInventory;
     private final StringRedisTemplate redis;
+    private final RedisCircuit redisCircuit;
 
-    RedisSeatReservation(SeatInventoryRepository seatInventory, StringRedisTemplate redis) {
+    RedisSeatReservation(SeatInventoryRepository seatInventory, StringRedisTemplate redis, RedisCircuit redisCircuit) {
         this.seatInventory = seatInventory;
         this.redis = redis;
+        this.redisCircuit = redisCircuit;
     }
 
     @Override
@@ -41,11 +46,12 @@ class RedisSeatReservation implements SeatReservationStrategy {
         List<Long> orderedIds = SeatClaims.ids(seats);
         List<String> keys = keys(eventId, orderedIds);
 
-        List<Long> takenPositions = claim(keys, hold, now);
-        if (!takenPositions.isEmpty()) {
+        // Registered before claiming: a claim that reached Redis but whose answer was lost (timeout) is undone too
+        releaseIfTransactionFails(keys, hold.getId());
+        List<Long> takenPositions = redisCircuit.callOrElse("seat-claim", () -> claim(keys, hold, now), () -> null);
+        if (takenPositions != null && !takenPositions.isEmpty()) {
             throw new SeatsUnavailableException(takenPositions.stream().map(pos -> orderedIds.get(pos.intValue() - 1)).toList());
         }
-        releaseIfTransactionFails(keys, hold.getId());
 
         int claimed = seatInventory.claimIfAvailable(orderedIds, hold.getId(), hold.getExpiresAt(), now);
         if (claimed != orderedIds.size()) {
@@ -60,9 +66,10 @@ class RedisSeatReservation implements SeatReservationStrategy {
      */
     @Override
     public void rejectIfKnownTaken(Long eventId, List<Long> seatIds, Instant now) {
-        List<String> claims = redis.opsForValue().multiGet(keys(eventId, seatIds));
+        List<String> claims = redisCircuit.callOrElse("seat-filter",
+                () -> redis.opsForValue().multiGet(keys(eventId, seatIds)), () -> null);
         if (claims == null) {
-            return;
+            return; // no filter without Redis: the database still decides
         }
         List<Long> taken = new ArrayList<>();
         for (int i = 0; i < seatIds.size(); i++) {
@@ -79,8 +86,15 @@ class RedisSeatReservation implements SeatReservationStrategy {
     @Override
     public void release(SeatHold hold, List<Long> seatIds) {
         if (!seatIds.isEmpty()) {
-            redis.execute(RELEASE, keys(hold.getEventId(), seatIds), hold.getId().toString());
+            releaseClaims(keys(hold.getEventId(), seatIds), hold.getId());
         }
+    }
+
+    /**
+     * Without Redis the claims cannot be removed now; they expire with the hold deadline anyway.
+     */
+    private void releaseClaims(List<String> keys, UUID holdId) {
+        redisCircuit.callOrElse("seat-release", () -> redis.execute(RELEASE, keys, holdId.toString()), () -> 0L);
     }
 
     @SuppressWarnings("unchecked")
@@ -99,7 +113,7 @@ class RedisSeatReservation implements SeatReservationStrategy {
             @Override
             public void afterCompletion(int status) {
                 if (status != STATUS_COMMITTED) {
-                    redis.execute(RELEASE, keys, holdId.toString());
+                    releaseClaims(keys, holdId);
                 }
             }
         });
