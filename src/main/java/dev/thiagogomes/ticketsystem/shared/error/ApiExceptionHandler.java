@@ -3,6 +3,7 @@ package dev.thiagogomes.ticketsystem.shared.error;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.MessageSourceResolvable;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
@@ -11,6 +12,7 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.CannotCreateTransactionException;
+import org.springframework.transaction.TransactionException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -20,6 +22,7 @@ import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
+import java.sql.SQLException;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -68,10 +71,15 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
-     * Database/Redis down or connection pool exhausted: a temporary condition, not a bug (503, not 500).
+     * Database down or connection pool exhausted: a temporary condition, not a bug (503, not 500). Decided by the
+     * whole cause chain, because the failure that surfaces is often a secondary one: when the connection dies
+     * mid-query, the rollback fails too and its exception replaces the original.
      */
-    @ExceptionHandler({DataAccessResourceFailureException.class, CannotCreateTransactionException.class})
-    ResponseEntity<ProblemDetail> handleInfrastructureFailure(RuntimeException ex) {
+    @ExceptionHandler({DataAccessException.class, TransactionException.class})
+    ResponseEntity<ProblemDetail> handleDataAccess(RuntimeException ex) {
+        if (!isConnectivityFailure(ex)) {
+            return ResponseEntity.internalServerError().body(handleUnexpected(ex));
+        }
         log.warn("Infrastructure unavailable: {}", ex.getMessage());
         return unavailable("A required service is temporarily unavailable; retry later");
     }
@@ -120,6 +128,21 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         body.setDetail("Request has invalid fields");
         body.setProperty("errors", errors);
         return body;
+    }
+
+    /**
+     * SQLState class 08 is the standard "connection exception". A rollback or commit failing at the JDBC level
+     * (Hibernate TransactionException) also means the connection is gone: on a live one it practically never fails.
+     */
+    static boolean isConnectivityFailure(Throwable ex) {
+        for (Throwable cause = ex; cause != null; cause = cause.getCause()) {
+            if (cause instanceof DataAccessResourceFailureException || cause instanceof CannotCreateTransactionException
+                    || cause instanceof org.hibernate.TransactionException
+                    || (cause instanceof SQLException sql && sql.getSQLState() != null && sql.getSQLState().startsWith("08"))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static ResponseEntity<ProblemDetail> unavailable(String detail) {
