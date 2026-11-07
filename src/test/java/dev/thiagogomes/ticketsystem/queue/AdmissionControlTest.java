@@ -125,7 +125,8 @@ class AdmissionControlTest {
         join("flooder", event.id())
                 .andExpect(status().isTooManyRequests())
                 .andExpect(header().string(HttpHeaders.RETRY_AFTER, org.hamcrest.Matchers.oneOf("1", "2")))
-                .andExpect(jsonPath("$.status").value(429));
+                .andExpect(jsonPath("$.status").value(429))
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"));
 
         join("polite-neighbor", event.id()).andExpect(status().isOk());
     }

@@ -60,13 +60,16 @@ class TicketSystemApplicationTests {
         mockMvc.perform(get("/events/1"))
                 .andExpect(header().string("X-Content-Type-Options", "nosniff"))
                 .andExpect(header().string("X-Frame-Options", "DENY"))
+                .andExpect(header().string("Content-Security-Policy", containsString("default-src 'self'")))
                 .andExpect(header().string("Cache-Control", "no-store"));
     }
 
     @Test
     void oversizedBodyIsRejectedBeforeParsing() throws Exception {
         mockMvc.perform(post("/events").contentType(MediaType.APPLICATION_JSON).content("x".repeat(70_000)))
-                .andExpect(status().isContentTooLarge());
+                .andExpect(status().isContentTooLarge())
+                .andExpect(header().string("X-Content-Type-Options", "nosniff")) // written by a filter, still protected
+                .andExpect(header().exists("Content-Security-Policy"));
     }
 
     @Test
