@@ -14,6 +14,7 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.io.IOException;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Set;
@@ -137,7 +138,7 @@ class SeatMapStreams {
     private static void send(SseEmitter emitter, Set<DataWithMediaType> event) {
         try {
             emitter.send(event);
-        } catch (Exception gone) {
+        } catch (IOException | IllegalStateException gone) {
             emitter.completeWithError(gone); // the client left; triggers unsubscribe
         }
     }
