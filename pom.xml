@@ -25,7 +25,7 @@
         <!-- Boot 4.1.2 manages 5.30.0: GHSA-h6w7-qmcm-q6xr (broker credentials in exception messages) and
              others, fixed by 5.36.1. Remove once the Boot BOM catches up. -->
         <rabbit-amqp-client.version>5.37.0</rabbit-amqp-client.version>
-        <jacoco.version>0.8.15</jacoco.version>
+        <jacoco.version>0.8.16</jacoco.version>
     </properties>
 
     <dependencies>
