@@ -20,7 +20,7 @@
         <java.version>21</java.version>
         <springdoc.version>3.2.0</springdoc.version>
         <zxing.version>3.5.4</zxing.version>
-        <shedlock.version>7.10.1</shedlock.version>
+        <shedlock.version>7.11.0</shedlock.version>
         <resilience4j.version>2.4.0</resilience4j.version>
         <!-- Boot 4.1.2 manages 5.30.0: GHSA-h6w7-qmcm-q6xr (broker credentials in exception messages) and
              others, fixed by 5.36.1. Remove once the Boot BOM catches up. -->
